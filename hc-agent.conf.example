@@ -1,0 +1,5 @@
+admin_url=wss://admin.example.com/api/agents/connect
+agent_token=
+server_name=
+server_ip=
+data_dir=/var/lib/highcube

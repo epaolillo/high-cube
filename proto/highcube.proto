@@ -1,0 +1,206 @@
+syntax = "proto3";
+
+package highcube;
+
+// Length-delimited envelope: kind + one payload message bytes.
+message Envelope {
+  MessageKind kind = 1;
+  bytes payload = 2;
+}
+
+enum MessageKind {
+  MESSAGE_KIND_UNSPECIFIED = 0;
+
+  // Admin -> Agent
+  DEPLOY_REPLICA = 1;
+  STOP_REPLICA = 2;
+  RESTART_REPLICA = 3;
+  SUBSCRIBE_LOGS = 4;
+  OPEN_CONTAINER_TERMINAL = 5;
+  OPEN_HOST_TERMINAL = 6;
+  TERMINAL_INPUT = 7;
+  CLOSE_STREAM = 8;
+  DELETE_VOLUME = 9;
+  RESIZE_TERMINAL = 10;
+  RECONCILE_REPLICAS = 11;
+  RENAME_VOLUME = 12;
+  CHECK_HOST_PORT = 13;
+
+  // Agent -> Admin
+  REGISTER = 100;
+  HEARTBEAT = 101;
+  HOST_METRICS = 102;
+  CONTAINER_STATUS = 103;
+  CONTAINER_METRICS = 104;
+  LOG_CHUNK = 105;
+  TERMINAL_OUTPUT = 106;
+  COMMAND_RESULT = 107;
+  DEPLOYMENT_LOG = 108;
+  HOST_PORT_RESULT = 109;
+}
+
+message VolumeSpec {
+  string name = 1;
+  string mount_path = 2;
+}
+
+message PortMapping {
+  int32 container_port = 1;
+  int32 host_port = 2; // 0 = agent picks a free host port
+}
+
+message DeployReplica {
+  int64 replica_id = 1;
+  int64 application_id = 2;
+  int64 deployment_id = 3;
+  string application_type = 4; // kept for wire compatibility; every application is deployed the same way
+  string network_alias = 5;    // hc-<application_id>
+  string repo_url = 6;
+  string branch = 7;
+  string commit_sha = 8;
+  string base_directory = 9;
+  string dockerfile_path = 10;
+  string deploy_key_private = 11;
+  map<string, string> env = 12;
+  int32 ports_exposes = 13; // primary listen port (health checks / private alias)
+  repeated VolumeSpec volumes = 14;
+  string health_check_type = 15; // none | http | cmd
+  string health_check_path = 16;
+  string health_check_command = 17;
+  int32 max_restart_count = 18;
+  string git_access_token = 19; // GitHub App installation token for private HTTPS clones
+  bool no_cache = 20;           // docker build --no-cache
+  repeated PortMapping port_mappings = 21;
+}
+
+message StopReplica {
+  int64 replica_id = 1;
+  string container_id = 2;
+  int64 application_id = 3; // container name is hc-<application_id>-<replica_id>
+}
+
+// Replica ids that must keep their containers on this server. Any other hc-* container is removed.
+message ReconcileReplicas {
+  repeated int64 replica_ids = 1;
+}
+
+message RestartReplica {
+  int64 replica_id = 1;
+  string container_id = 2;
+}
+
+message SubscribeLogs {
+  string stream_id = 1;
+  int64 replica_id = 2;
+  string container_id = 3;
+}
+
+message OpenContainerTerminal {
+  string stream_id = 1;
+  int64 replica_id = 2;
+  string container_id = 3;
+  string command = 4; // default /bin/sh
+  uint32 cols = 5;
+  uint32 rows = 6;
+}
+
+message OpenHostTerminal {
+  string stream_id = 1;
+  string command = 2; // default /bin/bash
+  uint32 cols = 3;
+  uint32 rows = 4;
+}
+
+message TerminalInput {
+  string stream_id = 1;
+  bytes data = 2;
+}
+
+message ResizeTerminal {
+  string stream_id = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+}
+
+message CloseStream {
+  string stream_id = 1;
+}
+
+message DeleteVolume {
+  string volume_name = 1;
+}
+
+message RenameVolume {
+  string from_volume_name = 1;
+  string to_volume_name = 2;
+}
+
+message Register {
+  string server_name = 1;
+  string agent_token = 2;
+  string server_ip = 3;
+}
+
+message Heartbeat {
+  int64 unix_ms = 1;
+}
+
+message HostMetrics {
+  string payload_json = 1;
+  int64 collected_at_unix_ms = 2;
+}
+
+message ContainerStatus {
+  int64 replica_id = 1;
+  string container_id = 2;
+  int32 host_port = 3;
+  string status = 4; // building | starting | running | healthy | unhealthy | stopped | failed | restart_limit_reached
+  string desired_state = 5;
+  int32 restart_count = 6;
+  string message = 7;
+  string git_sha = 8;
+  string git_message = 9; // subject line of the checked-out commit
+  string container_ip = 10; // IP on the highcube Docker network; used by nginx upstream
+}
+
+// Admin -> Agent: ask whether a host port is free on this server.
+message CheckHostPort {
+  string correlation_id = 1;
+  int32 port = 2;
+}
+
+// Agent -> Admin: reply to CheckHostPort.
+message HostPortResult {
+  string correlation_id = 1;
+  int32 port = 2;
+  bool available = 3;
+}
+
+message DeploymentLog {
+  int64 deployment_id = 1;
+  string phase = 2; // build | deploy
+  bytes data = 3;
+}
+
+message ContainerMetrics {
+  int64 replica_id = 1;
+  string payload_json = 2;
+  int64 collected_at_unix_ms = 3;
+}
+
+message LogChunk {
+  string stream_id = 1;
+  int64 replica_id = 2;
+  bytes data = 3;
+}
+
+message TerminalOutput {
+  string stream_id = 1;
+  bytes data = 2;
+}
+
+message CommandResult {
+  string correlation_id = 1;
+  bool ok = 2;
+  string message = 3;
+}

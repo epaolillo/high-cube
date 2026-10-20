@@ -1,0 +1,26 @@
+node_modules/
+src/admin/frontend/dist/
+build/
+*.o
+generated/
+*.db
+*.log
+logs/
+config.local.*
+.DS_Store
+cmake-build-*/
+.idea/
+.vscode/
+*.user
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+data/
+
+# Local configuration with secrets (keep the *.example templates tracked)
+hc-admin.conf
+hc-agent.conf
+
+# Internal design/docs and helper scripts
+*.mdc
+scripts/

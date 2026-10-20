@@ -1,0 +1,12 @@
+http_port=3000
+sqlite_path=data/highcube.db
+public_url=https://admin.example.com
+frontend_dist=src/admin/frontend/dist
+migrations_dir=migrations
+nginx_sites_dir=/etc/nginx/sites-enabled
+certbot_email=admin@example.com
+session_secret=change-me-to-a-long-random-string
+# Logging: file path, how many daily files to keep, and level.
+log_file=logs/log.txt
+log_retention_days=7
+log_level=info
