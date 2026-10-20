@@ -144,7 +144,7 @@ export function DataTable<T extends object>({
             }}
             trigger={['click']}
           >
-            <a onClick={(e) => e.preventDefault()} style={{ color: '#6B7C93', fontSize: 18 }}>
+            <a onClick={(e) => e.preventDefault()} style={{ color: 'var(--hc-text-faint)', fontSize: 18 }}>
               ⋮
             </a>
           </Dropdown>
@@ -220,12 +220,12 @@ export function DataTable<T extends object>({
           style={{
             marginBottom: 12,
             padding: '8px 12px',
-            background: '#F6F9FC',
-            border: '1px solid #E3E8EE',
-            borderRadius: 6,
+            background: 'var(--hc-surface-2)',
+            border: '2px solid var(--hc-border)',
+            borderRadius: 0,
           }}
         >
-          <span style={{ color: '#425466' }}>{t('selectedCount', { count: selectedKeys.length })}</span>
+          <span style={{ color: 'var(--hc-text-dim)' }}>{t('selectedCount', { count: selectedKeys.length })}</span>
           {bulkActions.map((action) => (
             <Button
               key={action.key}
@@ -289,7 +289,7 @@ export function DataTable<T extends object>({
           pageSizeOptions: ['10', '100', '1000'],
         }}
       />
-      <div style={{ marginTop: 8, color: '#6B7C93', fontSize: 12 }}>
+      <div style={{ marginTop: 8, color: 'var(--hc-text-faint)', fontSize: 12 }}>
         Page size{' '}
         <Select
           size="small"

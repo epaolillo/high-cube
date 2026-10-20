@@ -14,7 +14,8 @@ import GithubCallbackPage from './pages/GithubCallbackPage';
 import GithubSetupPage from './pages/GithubSetupPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
-import { stripeTheme } from './theme';
+import { makeTheme } from './theme';
+import { ThemeModeProvider, useThemeMode } from './theme-mode';
 import './i18n';
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
@@ -30,9 +31,10 @@ function AdminRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
-export default function App() {
+function ThemedApp() {
+  const { mode } = useThemeMode();
   return (
-    <ConfigProvider theme={stripeTheme}>
+    <ConfigProvider theme={makeTheme(mode)}>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -97,5 +99,13 @@ export default function App() {
         </BrowserRouter>
       </AuthProvider>
     </ConfigProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeModeProvider>
+      <ThemedApp />
+    </ThemeModeProvider>
   );
 }

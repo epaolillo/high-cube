@@ -1,0 +1,150 @@
+/*
+ * Pixel skin: global variables, fonts, and hard-edged styling shared across the
+ * app. Light is the default; [data-theme='dark'] swaps the palette. Values mirror
+ * the on-screen resource widget (high contrast, crisp 1px edges, pixel font).
+ */
+
+:root,
+:root[data-theme='light'] {
+  --hc-bg: #eef1f4;
+  --hc-surface: #ffffff;
+  --hc-surface-2: #e7ebef;
+  --hc-text: #0a0f14;
+  --hc-text-dim: #3f4e5a;
+  --hc-text-faint: #64757f;
+  --hc-border: #1b2730;
+  --hc-border-soft: #c6cfd6;
+  --hc-accent: #00a63e;
+  --hc-accent-contrast: #ffffff;
+  --hc-accent-weak: rgba(0, 166, 62, 0.12);
+  --hc-warning: #b45309;
+  --hc-warning-weak: #fff3e2;
+  --hc-error: #c81e3a;
+  --hc-error-weak: #fdeaed;
+  --hc-info: #1d6ff2;
+  --hc-info-weak: #eaf2ff;
+  --hc-shadow: 3px 3px 0 rgba(10, 15, 20, 0.85);
+  --hc-shadow-sm: 2px 2px 0 rgba(10, 15, 20, 0.8);
+}
+
+:root[data-theme='dark'] {
+  --hc-bg: #060f1b;
+  --hc-surface: #0b1826;
+  --hc-surface-2: #102236;
+  --hc-text: #dcecf9;
+  --hc-text-dim: #9fbdd2;
+  --hc-text-faint: #6f8ea6;
+  --hc-border: #1f4a66;
+  --hc-border-soft: #13324d;
+  --hc-accent: #2bf59a;
+  --hc-accent-contrast: #04120b;
+  --hc-accent-weak: rgba(43, 245, 154, 0.14);
+  --hc-warning: #ffb224;
+  --hc-warning-weak: rgba(255, 178, 36, 0.14);
+  --hc-error: #ff5c7a;
+  --hc-error-weak: rgba(255, 92, 122, 0.16);
+  --hc-info: #5aa0d0;
+  --hc-info-weak: rgba(90, 160, 208, 0.16);
+  --hc-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
+  --hc-shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.55);
+}
+
+* {
+  font-variant-numeric: tabular-nums;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--hc-bg);
+  color: var(--hc-text);
+  font-family: 'Pixelify Sans', 'Silkscreen', ui-monospace, 'Cascadia Mono', Menlo, monospace;
+}
+
+/* Keep bitmap/pixel artwork crisp when scaled (logo, avatars, images). */
+img {
+  image-rendering: pixelated;
+}
+
+/* Display/label text uses the chunkier pixel face. */
+.hc-pixel-display {
+  font-family: 'Silkscreen', 'Pixelify Sans', monospace;
+  letter-spacing: 0.02em;
+}
+
+/* High-contrast text selection. */
+::selection {
+  background: var(--hc-accent);
+  color: var(--hc-accent-contrast);
+}
+
+/* Pixel scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hc-border-soft) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--hc-border-soft);
+  border: 2px solid var(--hc-bg);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Hard, offset focus ring instead of soft glows. */
+*:focus-visible {
+  outline: 2px solid var(--hc-accent);
+  outline-offset: 1px;
+}
+
+/* Ant Design overrides that cannot be expressed through theme tokens alone. */
+.ant-card {
+  border: 2px solid var(--hc-border) !important;
+  box-shadow: var(--hc-shadow) !important;
+}
+
+.ant-modal .ant-modal-content {
+  border: 2px solid var(--hc-border);
+  box-shadow: var(--hc-shadow);
+}
+
+.ant-table-wrapper .ant-table {
+  border: 2px solid var(--hc-border);
+}
+
+.ant-table-wrapper .ant-table-thead > tr > th {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  border-bottom: 2px solid var(--hc-border) !important;
+}
+
+.ant-btn {
+  box-shadow: none !important;
+}
+
+.ant-btn-primary {
+  border: 2px solid var(--hc-border) !important;
+  box-shadow: var(--hc-shadow-sm) !important;
+}
+
+.ant-btn-primary:active {
+  box-shadow: none !important;
+  transform: translate(2px, 2px);
+}
+
+/* Dropdown / select popups: flat bordered panels. */
+.ant-dropdown .ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container {
+  border: 2px solid var(--hc-border);
+  box-shadow: var(--hc-shadow);
+  border-radius: 0;
+}

@@ -2,6 +2,7 @@ import { Avatar, Dropdown, Layout, Menu, Typography } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
+import { useThemeMode } from '../theme-mode';
 import './AdminLayout.css';
 
 const { Header, Sider, Content } = Layout;
@@ -11,6 +12,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, logout, isAdmin } = useAuth();
+  const { mode, toggle } = useThemeMode();
 
   const selected =
     ['/servers', '/applications', '/integrations', '/users', '/settings', '/profile'].find(
@@ -72,6 +74,16 @@ export default function AdminLayout() {
           <Typography.Text className="hc-header-hint">
             {profile?.email || profile?.name}
           </Typography.Text>
+          <button
+            type="button"
+            className="hc-theme-toggle"
+            onClick={toggle}
+            aria-label={t('toggleTheme')}
+            title={t('toggleTheme')}
+          >
+            <span aria-hidden="true">{mode === 'dark' ? '☀' : '☾'}</span>
+            <span>{mode === 'dark' ? t('themeLight') : t('themeDark')}</span>
+          </button>
           <Dropdown
             menu={{
               items: [
@@ -81,7 +93,7 @@ export default function AdminLayout() {
             }}
           >
             <button type="button" className="hc-avatar-btn">
-              <Avatar style={{ background: '#635BFF' }}>
+              <Avatar shape="square">
                 {(profile?.name || profile?.email || 'U').slice(0, 1).toUpperCase()}
               </Avatar>
             </button>

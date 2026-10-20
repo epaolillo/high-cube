@@ -12,7 +12,7 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: '100vh',
-        background: '#F6F9FC',
+        background: 'var(--hc-bg)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -23,19 +23,26 @@ export default function LoginPage() {
         style={{
           width: '100%',
           maxWidth: 400,
-          borderRadius: 8,
-          border: '1px solid #E3E8EE',
-          boxShadow:
-            '0 0 0 1px rgba(50, 50, 93, 0.06), 0 2px 5px rgba(50, 50, 93, 0.08), 0 1px 1.5px rgba(0, 0, 0, 0.04)',
+          borderRadius: 0,
+          border: '2px solid var(--hc-border)',
+          boxShadow: 'var(--hc-shadow)',
         }}
         styles={{ body: { padding: 32 } }}
       >
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/logo.png" alt="High Cube" style={{ width: 64, marginBottom: 16 }} />
-          <Typography.Title level={3} style={{ margin: 0, color: '#0A2540' }}>
+          <img
+            src="/logo.png"
+            alt="High Cube"
+            style={{ width: 64, marginBottom: 16, imageRendering: 'pixelated' }}
+          />
+          <Typography.Title
+            level={3}
+            className="hc-pixel-display"
+            style={{ margin: 0, color: 'var(--hc-text)' }}
+          >
             {t('welcome')}
           </Typography.Title>
-          <Typography.Paragraph style={{ color: '#425466', marginTop: 8 }}>
+          <Typography.Paragraph style={{ color: 'var(--hc-text-dim)', marginTop: 8 }}>
             {t('loginSubtitle')}
           </Typography.Paragraph>
         </div>
