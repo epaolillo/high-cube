@@ -66,7 +66,7 @@ export function HostnameFields({
               marginBottom: 12,
               padding: 12,
               border: '1px solid #E3E8EE',
-              borderRadius: 8,
+              borderRadius: 0,
               background: '#FAFBFC',
             }}
           >

@@ -63,7 +63,7 @@ type Server = {
 const cardStyle = {
   background: '#fff',
   border: '1px solid #E3E8EE',
-  borderRadius: 8,
+  borderRadius: 0,
   padding: 24,
 };
 
@@ -343,7 +343,7 @@ export default function ServerDetailPage() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 padding: '2px 10px',
-                borderRadius: 999,
+                borderRadius: 0,
                 background: server.status === 'online' ? 'rgba(9, 130, 93, 0.1)' : '#F6F9FC',
                 border: '1px solid #E3E8EE',
               }}

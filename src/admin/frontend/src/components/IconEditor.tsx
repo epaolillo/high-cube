@@ -22,7 +22,7 @@ export function AppIcon({
         alt=""
         width={size}
         height={size}
-        style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, flex: `0 0 ${size}px` }}
+        style={{ width: size, height: size, objectFit: 'cover', borderRadius: 0, flex: `0 0 ${size}px` }}
       />
     );
   }
@@ -31,7 +31,7 @@ export function AppIcon({
       style={{
         width: size,
         height: size,
-        borderRadius: 6,
+        borderRadius: 0,
         background: '#E3E8EE',
         color: '#425466',
         display: 'inline-flex',
@@ -160,7 +160,7 @@ function SquareCropper({ src, onChange }: { src: string; onChange: (dataUrl: str
         style={{
           width: VIEWPORT,
           height: VIEWPORT,
-          borderRadius: 12,
+          borderRadius: 0,
           border: '1px solid #E3E8EE',
           background:
             'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 20px 20px',

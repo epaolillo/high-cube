@@ -1,6 +1,46 @@
 import { Tooltip } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useThemeMode } from '../theme-mode';
+
+// High-contrast palettes for the pixel readout. Dark is the original phosphor
+// panel; light keeps the same density on a bright background.
+const PALETTE = {
+  dark: {
+    bg: '#060f1b',
+    ledRunning: '#2bf59a',
+    ledDeploying: '#ffb224',
+    ledStopped: '#37506a',
+    replicas: '#5aa0d0',
+    clockOn: '#53ff8f',
+    clockOff: '#355a74',
+    numberOn: '#dcecf9',
+    numberOff: '#55707f',
+    segOff: '#12304a',
+    cpu: '#a08bff',
+    mem: '#2bf59a',
+    disk: '#ffb224',
+    labelStopped: '#55707f',
+    border: '#13324d',
+  },
+  light: {
+    bg: '#eef1f4',
+    ledRunning: '#09825d',
+    ledDeploying: '#b45309',
+    ledStopped: '#b4bcc4',
+    replicas: '#1d6ff2',
+    clockOn: '#09825d',
+    clockOff: '#9aa7b2',
+    numberOn: '#0a0f14',
+    numberOff: '#8a99a5',
+    segOff: '#cdd6dd',
+    cpu: '#6d28d9',
+    mem: '#09825d',
+    disk: '#b45309',
+    labelStopped: '#8a99a5',
+    border: '#1b2730',
+  },
+} as const;
 
 type Props = {
   cpuPercent?: number;
@@ -106,6 +146,8 @@ export function MetricDisplay({
   replicas,
 }: Props) {
   const { t } = useTranslation();
+  const { mode } = useThemeMode();
+  const pal = PALETTE[mode];
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [now, setNow] = useState(() => Date.now());
 
@@ -129,13 +171,13 @@ export function MetricDisplay({
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, VW, VH);
 
-    // Solid near-black background for maximum contrast.
-    ctx.fillStyle = '#060f1b';
+    // Solid high-contrast background.
+    ctx.fillStyle = pal.bg;
     ctx.fillRect(0, 0, VW, VH);
 
     const running = status === 'running';
     const deploying = status === 'deploying';
-    const ledColor = running ? '#2bf59a' : deploying ? '#ffb224' : '#37506a';
+    const ledColor = running ? pal.ledRunning : deploying ? pal.ledDeploying : pal.ledStopped;
 
     // Status LED (a crisp 3x3 block).
     ctx.fillStyle = ledColor;
@@ -143,13 +185,13 @@ export function MetricDisplay({
 
     // Replicas count.
     if (replicas && replicas > 0) {
-      drawText(ctx, `x${replicas}`, 6, 0, '#5aa0d0');
+      drawText(ctx, `x${replicas}`, 6, 0, pal.replicas);
     }
 
-    // Uptime clock (bright phosphor green, right-aligned).
+    // Uptime clock (right-aligned).
     const uptime = running && startedAt ? now - Date.parse(startedAt) : 0;
     const clock = running ? formatUptime(uptime) : '--:--:--';
-    drawText(ctx, clock, VW - 1 - measure(clock), 0, running ? '#53ff8f' : '#355a74');
+    drawText(ctx, clock, VW - 1 - measure(clock), 0, running ? pal.clockOn : pal.clockOff);
 
     // Metrics.
     const cpu = clamp(cpuPercent || 0);
@@ -161,16 +203,16 @@ export function MetricDisplay({
     const disk = clamp(((diskUsedBytes || 0) / diskRef) * 100);
 
     const bars = [
-      { label: 'C', value: cpu, text: `${Math.round(cpu)}%`, color: '#a08bff' },
-      { label: 'M', value: mem, text: `${Math.round(mem)}%`, color: '#2bf59a' },
-      { label: 'D', value: disk, text: diskShort(diskUsedBytes || 0), color: '#ffb224' },
+      { label: 'C', value: cpu, text: `${Math.round(cpu)}%`, color: pal.cpu },
+      { label: 'M', value: mem, text: `${Math.round(mem)}%`, color: pal.mem },
+      { label: 'D', value: disk, text: diskShort(diskUsedBytes || 0), color: pal.disk },
     ];
 
     const centers = [16, 43, 70];
     const barWidth = 16;
     const segCount = 8;
     const bottomSegY = 27; // top-y of the lowest segment
-    const numberColor = running ? '#dcecf9' : '#55707f';
+    const numberColor = running ? pal.numberOn : pal.numberOff;
 
     bars.forEach((bar, index) => {
       const cx = centers[index];
@@ -182,13 +224,13 @@ export function MetricDisplay({
       for (let i = 0; i < segCount; i += 1) {
         const y = bottomSegY - i * 2; // 1px segment + 1px gap
         const on = running && i < lit;
-        ctx.fillStyle = on ? bar.color : '#12304a';
+        ctx.fillStyle = on ? bar.color : pal.segOff;
         ctx.fillRect(Math.round(left), y, barWidth, 1);
       }
       // Bar label underneath.
-      drawText(ctx, bar.label, Math.round(cx - measure(bar.label) / 2), 29, running ? bar.color : '#55707f');
+      drawText(ctx, bar.label, Math.round(cx - measure(bar.label) / 2), 29, running ? bar.color : pal.labelStopped);
     });
-  }, [cpuPercent, memoryUsedBytes, memoryLimitBytes, diskUsedBytes, startedAt, status, replicas, now]);
+  }, [cpuPercent, memoryUsedBytes, memoryLimitBytes, diskUsedBytes, startedAt, status, replicas, now, pal]);
 
   const memText =
     memoryLimitBytes && memoryLimitBytes > 0
@@ -226,9 +268,8 @@ export function MetricDisplay({
         style={{
           width: VW * SCALE,
           height: VH * SCALE,
-          borderRadius: 6,
           display: 'block',
-          border: '1px solid #13324d',
+          border: `2px solid ${pal.border}`,
           imageRendering: 'pixelated',
         }}
       />

@@ -1,7 +1,13 @@
 /*
  * Pixel skin: global variables, fonts, and hard-edged styling shared across the
- * app. Light is the default; [data-theme='dark'] swaps the palette. Values mirror
- * the on-screen resource widget (high contrast, crisp 1px edges, pixel font).
+ * app. Light is the default; [data-theme='dark'] swaps the palette.
+ *
+ * Design rules honoured here:
+ *  - The pixel is 1px: every border/stroke is a single crisp pixel.
+ *  - Rounded corners are faked with a tiny pixel staircase (clip-path), never
+ *    with real border-radius.
+ *  - No drop boxes / elevation shadows.
+ *  - Separators are soft, never hard black lines.
  */
 
 :root,
@@ -23,8 +29,9 @@
   --hc-error-weak: #fdeaed;
   --hc-info: #1d6ff2;
   --hc-info-weak: #eaf2ff;
-  --hc-shadow: 3px 3px 0 rgba(10, 15, 20, 0.85);
-  --hc-shadow-sm: 2px 2px 0 rgba(10, 15, 20, 0.8);
+  /* Elevation is intentionally flat: no drop boxes. */
+  --hc-shadow: none;
+  --hc-shadow-sm: none;
 }
 
 :root[data-theme='dark'] {
@@ -45,8 +52,59 @@
   --hc-error-weak: rgba(255, 92, 122, 0.16);
   --hc-info: #5aa0d0;
   --hc-info-weak: rgba(90, 160, 208, 0.16);
-  --hc-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
-  --hc-shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.55);
+  --hc-shadow: none;
+  --hc-shadow-sm: none;
+}
+
+/*
+ * Pixel "rounded" corner. A 1px two-step staircase at each corner reads as a
+ * curve drawn with pixels. --hc-step keeps the steps exactly 1 pixel wide so
+ * the roundness is made of real pixels; --hc-px-border paints a 1px outline
+ * that follows that stepped edge (used on monochrome-bordered surfaces).
+ */
+:root {
+  --hc-step: 1px;
+  --hc-corner: polygon(
+    0 calc(var(--hc-step) * 2),
+    var(--hc-step) calc(var(--hc-step) * 2),
+    var(--hc-step) var(--hc-step),
+    calc(var(--hc-step) * 2) var(--hc-step),
+    calc(var(--hc-step) * 2) 0,
+    calc(100% - var(--hc-step) * 2) 0,
+    calc(100% - var(--hc-step) * 2) var(--hc-step),
+    calc(100% - var(--hc-step)) var(--hc-step),
+    calc(100% - var(--hc-step)) calc(var(--hc-step) * 2),
+    100% calc(var(--hc-step) * 2),
+    100% calc(100% - var(--hc-step) * 2),
+    calc(100% - var(--hc-step)) calc(100% - var(--hc-step) * 2),
+    calc(100% - var(--hc-step)) calc(100% - var(--hc-step)),
+    calc(100% - var(--hc-step) * 2) calc(100% - var(--hc-step)),
+    calc(100% - var(--hc-step) * 2) 100%,
+    calc(var(--hc-step) * 2) 100%,
+    calc(var(--hc-step) * 2) calc(100% - var(--hc-step)),
+    var(--hc-step) calc(100% - var(--hc-step)),
+    var(--hc-step) calc(100% - var(--hc-step) * 2),
+    0 calc(100% - var(--hc-step) * 2)
+  );
+  --hc-px-border:
+    drop-shadow(1px 0 0 var(--hc-border))
+    drop-shadow(-1px 0 0 var(--hc-border))
+    drop-shadow(0 1px 0 var(--hc-border))
+    drop-shadow(0 -1px 0 var(--hc-border));
+}
+
+/* Reusable pixel-corner utilities. */
+.hc-px {
+  border-radius: 0 !important;
+  clip-path: var(--hc-corner);
+}
+
+.hc-px-bordered {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }
 
 * {
@@ -78,7 +136,7 @@ img {
   color: var(--hc-accent-contrast);
 }
 
-/* Pixel scrollbars. */
+/* Pixel scrollbars (1px track border). */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--hc-border-soft) transparent;
@@ -91,60 +149,148 @@ img {
 
 *::-webkit-scrollbar-thumb {
   background: var(--hc-border-soft);
-  border: 2px solid var(--hc-bg);
+  border: 1px solid var(--hc-bg);
 }
 
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Hard, offset focus ring instead of soft glows. */
+/* Hard 1px focus ring instead of soft glows. */
 *:focus-visible {
-  outline: 2px solid var(--hc-accent);
+  outline: 1px solid var(--hc-accent);
   outline-offset: 1px;
 }
 
-/* Ant Design overrides that cannot be expressed through theme tokens alone. */
-.ant-card {
-  border: 2px solid var(--hc-border) !important;
-  box-shadow: var(--hc-shadow) !important;
+/* ---------------------------------------------------------------------------
+ * Ant Design overrides. Monochrome-bordered surfaces use the clip-path corner
+ * plus the 1px --hc-px-border outline; semantically coloured chips keep their
+ * own 1px border and are only clipped.
+ * ------------------------------------------------------------------------- */
+
+/* Flat bordered panels with pixel corners, no elevation. */
+.ant-card,
+.ant-modal .ant-modal-content,
+.ant-dropdown .ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container,
+.ant-popover-inner,
+.ant-message-notice .ant-message-notice-content,
+.ant-notification-notice {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }
 
-.ant-modal .ant-modal-content {
-  border: 2px solid var(--hc-border);
-  box-shadow: var(--hc-shadow);
+.ant-message-notice .ant-message-notice-content,
+.ant-notification-notice {
+  background: var(--hc-surface);
+  color: var(--hc-text);
+  font-family: 'Pixelify Sans', 'Silkscreen', monospace;
 }
 
+/* Table: soft 1px separators instead of hard black lines. */
 .ant-table-wrapper .ant-table {
-  border: 2px solid var(--hc-border);
+  border: 1px solid var(--hc-border-soft);
 }
 
 .ant-table-wrapper .ant-table-thead > tr > th {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 11px;
-  border-bottom: 2px solid var(--hc-border) !important;
+  border-bottom: 1px solid var(--hc-border-soft) !important;
 }
 
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--hc-border-soft) !important;
+}
+
+/* Kill the vertical cell dividers that can read as dark lines. */
+.ant-table-wrapper .ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+/* Buttons: pixel corners, 1px outline, no shadow box. */
 .ant-btn {
+  border: none !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }
 
-.ant-btn-primary {
-  border: 2px solid var(--hc-border) !important;
-  box-shadow: var(--hc-shadow-sm) !important;
+.ant-btn:active {
+  transform: translate(1px, 1px);
 }
 
-.ant-btn-primary:active {
+/* Text buttons shouldn't get a boxed outline. */
+.ant-btn-text,
+.ant-btn-link {
+  clip-path: none;
+  filter: none;
+}
+
+/* Inputs / selects / pickers: pixel corners + 1px outline. */
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-input-number-affix-wrapper,
+.ant-picker,
+.ant-select .ant-select-selector {
+  border: none !important;
+  border-radius: 0 !important;
   box-shadow: none !important;
-  transform: translate(2px, 2px);
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }
 
-/* Dropdown / select popups: flat bordered panels. */
-.ant-dropdown .ant-dropdown-menu,
-.ant-select-dropdown,
-.ant-picker-dropdown .ant-picker-panel-container {
-  border: 2px solid var(--hc-border);
-  box-shadow: var(--hc-shadow);
-  border-radius: 0;
+/* Semantically coloured chips keep their own 1px border, only clipped. */
+.ant-tag,
+.ant-avatar,
+.ant-badge-count,
+.ant-badge-count-sm,
+.ant-segmented,
+.ant-checkbox .ant-checkbox-inner,
+.ant-switch {
+  border-radius: 0 !important;
+  clip-path: var(--hc-corner);
+}
+
+.ant-tag {
+  border-width: 1px !important;
+}
+
+/* Tabs underline kept soft, not a black rule. */
+.ant-tabs-top > .ant-tabs-nav::before,
+.ant-tabs-bottom > .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--hc-border-soft) !important;
+}
+
+/* sweetalert2 dialogs: pixel corners, 1px outline, no shadow box. */
+.swal2-popup {
+  background: var(--hc-surface) !important;
+  color: var(--hc-text) !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-family: 'Pixelify Sans', 'Silkscreen', monospace !important;
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
+}
+
+.swal2-popup .swal2-title,
+.swal2-popup .swal2-html-container {
+  color: var(--hc-text) !important;
+  font-family: 'Pixelify Sans', 'Silkscreen', monospace !important;
+}
+
+.swal2-popup .swal2-styled {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-family: 'Pixelify Sans', 'Silkscreen', monospace !important;
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }

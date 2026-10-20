@@ -5,7 +5,7 @@
 
 .hc-sider {
   background: var(--hc-surface) !important;
-  border-right: 2px solid var(--hc-border);
+  border-right: 1px solid var(--hc-border-soft);
   display: flex !important;
   flex-direction: column;
   height: 100vh;
@@ -27,9 +27,10 @@
   gap: 12px;
   margin: 16px 16px 10px;
   padding: 12px;
-  border: 2px solid var(--hc-border);
+  border: none;
   background: var(--hc-surface-2);
-  box-shadow: var(--hc-shadow-sm);
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
   cursor: pointer;
   text-align: left;
   width: calc(100% - 32px);
@@ -44,7 +45,8 @@
   height: 40px;
   object-fit: cover;
   flex-shrink: 0;
-  border: 2px solid var(--hc-border);
+  border: 1px solid var(--hc-border);
+  clip-path: var(--hc-corner);
   image-rendering: pixelated;
 }
 
@@ -89,7 +91,7 @@
 
 .hc-sider-group-bottom {
   padding-top: 12px;
-  border-top: 2px solid var(--hc-border-soft);
+  border-top: 1px solid var(--hc-border-soft);
   margin: 0 8px;
   padding-left: 0;
   padding-right: 0;
@@ -115,7 +117,8 @@
   margin: 2px 4px !important;
   width: calc(100% - 8px) !important;
   border-radius: 0 !important;
-  border: 2px solid transparent !important;
+  border: 1px solid transparent !important;
+  clip-path: var(--hc-corner);
   height: 38px !important;
   line-height: 34px !important;
   color: var(--hc-text-dim) !important;
@@ -141,7 +144,7 @@
 
 .hc-header {
   background: var(--hc-surface) !important;
-  border-bottom: 2px solid var(--hc-border);
+  border-bottom: 1px solid var(--hc-border-soft);
   display: flex !important;
   align-items: center;
   justify-content: flex-end;
@@ -163,7 +166,7 @@
   gap: 6px;
   height: 32px;
   padding: 0 10px;
-  border: 2px solid var(--hc-border);
+  border: none;
   background: var(--hc-surface-2);
   color: var(--hc-text);
   font-family: 'Silkscreen', 'Pixelify Sans', monospace;
@@ -171,7 +174,8 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: var(--hc-shadow-sm);
+  clip-path: var(--hc-corner);
+  filter: var(--hc-px-border);
 }
 
 .hc-theme-toggle:hover {
@@ -181,8 +185,7 @@
 }
 
 .hc-theme-toggle:active {
-  box-shadow: none;
-  transform: translate(2px, 2px);
+  transform: translate(1px, 1px);
 }
 
 .hc-avatar-btn {
@@ -195,8 +198,9 @@
 }
 
 .hc-avatar-btn .ant-avatar {
-  border: 2px solid var(--hc-border);
+  border: 1px solid var(--hc-border);
   border-radius: 0;
+  clip-path: var(--hc-corner);
   background: var(--hc-accent) !important;
   color: var(--hc-accent-contrast) !important;
   font-family: 'Silkscreen', 'Pixelify Sans', monospace;
@@ -214,9 +218,10 @@
   gap: 6px;
   max-width: 320px;
   padding: 3px 10px;
-  border: 2px solid var(--hc-info);
+  border: 1px solid var(--hc-info);
   background: var(--hc-info-weak);
   color: var(--hc-info);
+  clip-path: var(--hc-corner);
   font-size: 12px;
   font-weight: 600;
   line-height: 18px;

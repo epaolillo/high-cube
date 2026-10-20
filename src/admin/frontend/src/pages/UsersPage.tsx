@@ -24,7 +24,7 @@ export default function UsersPage() {
           {t('create')}
         </Button>
       </div>
-      <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+      <div style={{ background: 'var(--hc-surface)', border: '1px solid var(--hc-border-soft)', borderRadius: 0, padding: 24 }}>
         <DataTable<User>
           endpoint="/users"
           refreshKey={refreshKey}

@@ -24,8 +24,6 @@ export default function LoginPage() {
           width: '100%',
           maxWidth: 400,
           borderRadius: 0,
-          border: '2px solid var(--hc-border)',
-          boxShadow: 'var(--hc-shadow)',
         }}
         styles={{ body: { padding: 32 } }}
       >

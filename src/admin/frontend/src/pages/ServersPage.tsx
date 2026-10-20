@@ -64,7 +64,7 @@ export default function ServersPage() {
         style={{
           background: '#fff',
           border: '1px solid #E3E8EE',
-          borderRadius: 8,
+          borderRadius: 0,
           padding: 24,
           boxShadow:
             '0 0 0 1px rgba(50, 50, 93, 0.06), 0 2px 5px rgba(50, 50, 93, 0.08), 0 1px 1.5px rgba(0, 0, 0, 0.04)',

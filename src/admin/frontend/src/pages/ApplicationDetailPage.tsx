@@ -43,7 +43,7 @@ dayjs.extend(relativeTime);
 const cardStyle: React.CSSProperties = {
   background: '#fff',
   border: '1px solid #E3E8EE',
-  borderRadius: 8,
+  borderRadius: 0,
   padding: 24,
 };
 
@@ -422,7 +422,7 @@ function DeploymentsTab({
                   style={{
                     border: failed ? '1px solid #F5222D' : '1px solid #E3E8EE',
                     background: failed ? '#FFF1F0' : '#fff',
-                    borderRadius: 8,
+                    borderRadius: 0,
                     padding: 16,
                     marginBottom: 8,
                   }}
@@ -487,7 +487,7 @@ function DeploymentsTab({
             background: isFailureStatus(logStatus) ? '#FFF1F0' : '#0A2540',
             color: isFailureStatus(logStatus) ? '#CF1322' : '#E6EDF5',
             border: isFailureStatus(logStatus) ? '1px solid #F5222D' : 'none',
-            borderRadius: 8,
+            borderRadius: 0,
             padding: 16,
             maxHeight: '60vh',
             overflow: 'auto',
@@ -1204,7 +1204,7 @@ export default function ApplicationDetailPage() {
                     padding: 12,
                     background: '#0A2540',
                     color: '#E8EEF4',
-                    borderRadius: 8,
+                    borderRadius: 0,
                     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
                     fontSize: 12,
                     lineHeight: 1.55,

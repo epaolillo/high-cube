@@ -100,7 +100,7 @@ function Section({
                 textAlign: 'left',
                 border: selected ? '1px solid #635bff' : '1px solid #E3E8EE',
                 background: selected ? '#f6f5ff' : '#fff',
-                borderRadius: 8,
+                borderRadius: 0,
                 padding: 10,
                 cursor: 'pointer',
               }}
@@ -119,7 +119,7 @@ function Section({
                     style={{
                       width: 28,
                       height: 28,
-                      borderRadius: 6,
+                      borderRadius: 0,
                       background: '#E3E8EE',
                       display: 'inline-flex',
                       alignItems: 'center',

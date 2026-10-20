@@ -116,7 +116,7 @@ export default function SettingsPage() {
             label: t('general'),
             children: (
               <>
-              <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+              <div style={{ background: 'var(--hc-surface)', border: '1px solid var(--hc-border-soft)', borderRadius: 0, padding: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                   <Typography.Title level={5} style={{ margin: 0 }}>
                     {t('baseDomains')}
@@ -158,7 +158,7 @@ export default function SettingsPage() {
                 style={{
                   background: '#fff',
                   border: '1px solid #E3E8EE',
-                  borderRadius: 8,
+                  borderRadius: 0,
                   padding: 24,
                   marginTop: 24,
                 }}
@@ -178,7 +178,7 @@ export default function SettingsPage() {
             key: 'metrics',
             label: t('metrics'),
             children: (
-              <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24, maxWidth: 420 }}>
+              <div style={{ background: 'var(--hc-surface)', border: '1px solid var(--hc-border-soft)', borderRadius: 0, padding: 24, maxWidth: 420 }}>
                 <Form
                   layout="vertical"
                   onFinish={async () => {

@@ -221,7 +221,7 @@ export function DataTable<T extends object>({
             marginBottom: 12,
             padding: '8px 12px',
             background: 'var(--hc-surface-2)',
-            border: '2px solid var(--hc-border)',
+            border: '1px solid var(--hc-border-soft)',
             borderRadius: 0,
           }}
         >

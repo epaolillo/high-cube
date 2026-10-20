@@ -15,7 +15,7 @@ export default function ProfilePage() {
       <Typography.Title level={3} style={{ color: '#0A2540' }}>
         {t('profile')}
       </Typography.Title>
-      <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+      <div style={{ background: 'var(--hc-surface)', border: '1px solid var(--hc-border-soft)', borderRadius: 0, padding: 24 }}>
         <Form
           layout="vertical"
           initialValues={{ name: profile.name, locale: profile.locale || 'en' }}

@@ -168,7 +168,7 @@ export default function ApplicationsPage() {
         style={{
           background: '#fff',
           border: '1px solid #E3E8EE',
-          borderRadius: 8,
+          borderRadius: 0,
           padding: 24,
         }}
       >
