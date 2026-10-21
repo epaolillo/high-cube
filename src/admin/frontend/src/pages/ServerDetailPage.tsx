@@ -225,8 +225,9 @@ function HostTerminal({
   );
 }
 
-export default function ServerDetailPage() {
-  const { id } = useParams();
+export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
+  const params = useParams();
+  const id = propId != null ? String(propId) : params.id;
   const { t, i18n } = useTranslation();
   const [server, setServer] = useState<Server>();
   const [rows, setRows] = useState<MetricRow[]>([]);

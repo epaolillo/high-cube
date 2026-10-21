@@ -13,11 +13,13 @@ namespace websocket = beast::websocket;
 class Session : public std::enable_shared_from_this<Session> {
 public:
   Session(tcp::socket socket, Router& router, std::shared_ptr<AgentHub> agentHub,
-          std::shared_ptr<HostTerminalPolling> terminalPolling)
+          std::shared_ptr<HostTerminalPolling> terminalPolling,
+          std::shared_ptr<PresenceHub> presenceHub)
       : stream_(std::move(socket)),
         router_(router),
         agentHub_(std::move(agentHub)),
-        terminalPolling_(std::move(terminalPolling)) {}
+        terminalPolling_(std::move(terminalPolling)),
+        presenceHub_(std::move(presenceHub)) {}
 
   void run() { doRead(); }
 
@@ -39,6 +41,11 @@ private:
     const bool isUpgrade = request_.method() == http::verb::get && websocket::is_upgrade(request_);
     const bool isAgentConnect = path == "/api/agents/connect";
     const bool isHostTerminal = isHostTerminalPath(path);
+
+    if (isUpgrade && presenceHub_ && isPresencePath(path)) {
+      presenceHub_->onUpgrade(stream_.release_socket(), std::move(request_));
+      return;
+    }
 
     if (isUpgrade && agentHub_ && (isAgentConnect || isHostTerminal)) {
       agentHub_->onUpgrade(stream_.release_socket(), std::move(request_));
@@ -73,18 +80,21 @@ private:
   Router& router_;
   std::shared_ptr<AgentHub> agentHub_;
   std::shared_ptr<HostTerminalPolling> terminalPolling_;
+  std::shared_ptr<PresenceHub> presenceHub_;
 };
 
 }  // namespace
 
 HttpServer::HttpServer(net::io_context& ioc, const std::string& address, unsigned short port,
                        Router& router, std::shared_ptr<AgentHub> agentHub,
-                       std::shared_ptr<HostTerminalPolling> terminalPolling)
+                       std::shared_ptr<HostTerminalPolling> terminalPolling,
+                       std::shared_ptr<PresenceHub> presenceHub)
     : ioc_(ioc),
       acceptor_(ioc, {net::ip::make_address(address), port}),
       router_(router),
       agentHub_(std::move(agentHub)),
-      terminalPolling_(std::move(terminalPolling)) {}
+      terminalPolling_(std::move(terminalPolling)),
+      presenceHub_(std::move(presenceHub)) {}
 
 void HttpServer::start() {
   doAccept();
@@ -93,7 +103,9 @@ void HttpServer::start() {
 void HttpServer::doAccept() {
   acceptor_.async_accept([this](beast::error_code ec, tcp::socket socket) {
     if (!ec) {
-      std::make_shared<Session>(std::move(socket), router_, agentHub_, terminalPolling_)->run();
+      std::make_shared<Session>(std::move(socket), router_, agentHub_, terminalPolling_,
+                                presenceHub_)
+          ->run();
     }
     doAccept();
   });

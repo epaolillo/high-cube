@@ -7,7 +7,7 @@
 namespace highcube::admin {
 
 AgentSession::AgentSession(tcp::socket socket, MessageHandler onMessage)
-    : ws_(std::move(socket)), onMessage_(std::move(onMessage)) {}
+    : ws_(std::move(socket)), executor_(ws_.get_executor()), onMessage_(std::move(onMessage)) {}
 
 void AgentSession::start(http::request<http::string_body> req, CloseHandler onClose) {
   onClose_ = std::move(onClose);
@@ -27,13 +27,21 @@ void AgentSession::send(const ::highcube::Envelope& envelope) {
     return;
   }
   auto data = std::make_shared<std::string>(envelope.SerializeAsString());
-  net::post(ws_.get_executor(), [self = shared_from_this(), data]() {
-    if (self->closed_) {
+  // Post onto the executor captured at construction. Querying the websocket
+  // executor while async_read is outstanding has crashed the process (SEGV)
+  // from timer callbacks such as the supervisor.
+  net::post(executor_, [self = weak_from_this(), data]() {
+    const auto session = self.lock();
+    if (!session || session->closed_) {
       return;
     }
-    self->outgoing_.push_back(data);
-    if (!self->writing_) {
-      self->doWrite();
+    try {
+      session->outgoing_.push_back(data);
+      if (!session->writing_) {
+        session->doWrite();
+      }
+    } catch (const std::exception& ex) {
+      spdlog::error("agent send failed: {}", ex.what());
     }
   });
 }

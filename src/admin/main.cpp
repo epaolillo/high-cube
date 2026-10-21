@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
     net::io_context ioc{1};
     ctx.agentHub = std::make_shared<AgentHub>(ioc, *ctx.repos);
     ctx.agentHub->setAuth(ctx.auth.get());
+    ctx.presence = std::make_shared<PresenceHub>(ioc, *ctx.repos, *ctx.auth);
     ctx.placement = std::make_unique<PlacementService>(ctx);
     ctx.deployments = std::make_unique<DeploymentService>(ctx);
     ctx.githubApps = std::make_unique<GithubAppService>(ctx);
@@ -101,7 +102,7 @@ int main(int argc, char** argv) {
     registerHandlers(router, ctx);
 
     HttpServer server(ioc, "0.0.0.0", static_cast<unsigned short>(config.httpPort), router,
-                      ctx.agentHub, terminalPolling);
+                      ctx.agentHub, terminalPolling, ctx.presence);
     server.start();
     spdlog::info("hc-admin listening on :{}", config.httpPort);
 
@@ -178,6 +179,26 @@ int main(int argc, char** argv) {
       });
     };
     scheduleSupervisor();
+
+    // Presence heartbeats: while users keep the dashboard open, record a coarse
+    // heartbeat so the activity timeline knows when each user was active.
+    net::steady_timer presenceTimer(ioc);
+    std::function<void()> schedulePresence;
+    schedulePresence = [&]() {
+      presenceTimer.expires_after(std::chrono::seconds(60));
+      presenceTimer.async_wait([&](beast::error_code ec) {
+        if (ec) {
+          return;
+        }
+        try {
+          ctx.presence->recordHeartbeats();
+        } catch (const std::exception& ex) {
+          spdlog::error("presence heartbeat failed: {}", ex.what());
+        }
+        schedulePresence();
+      });
+    };
+    schedulePresence();
 
     ioc.run();
   } catch (const std::exception& ex) {

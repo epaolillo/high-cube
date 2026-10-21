@@ -28,6 +28,31 @@ Application requireAppAccess(AppContext& ctx, RequestContext& c, int64_t appId) 
 }  // namespace
 
 void registerHandlers(Router& router, AppContext& ctx) {
+  // Record every mutating action in the audit trail. Runs after each handler.
+  router.setAuditHook([&ctx](const RequestContext& c, const std::string& routePattern, int status) {
+    if (!c.user) {
+      return;
+    }
+    const auto derived = deriveActivity(c.method, routePattern);
+    if (derived.action.empty()) {
+      return;  // Deliberately not audited (noisy or internal route).
+    }
+    UserActivity activity;
+    activity.userId = c.user->id;
+    activity.action = derived.action;
+    activity.targetType = derived.targetType;
+    activity.method = c.method;
+    activity.path = c.targetPath;
+    activity.status = status;
+    if (const auto it = c.params.find("id"); it != c.params.end()) {
+      activity.targetId = it->second;
+    }
+    const auto realIp = std::string(c.request["X-Real-IP"]);
+    const auto forwarded = std::string(c.request["X-Forwarded-For"]);
+    activity.ip = !realIp.empty() ? realIp : forwarded;
+    ActivityService(ctx).record(activity);
+  });
+
   router.add("POST", "/api/auth/login", false, [&](RequestContext& c) {
     const auto body = nlohmann::json::parse(c.request.body());
     return jsonResponse(http::status::ok,
@@ -103,6 +128,31 @@ void registerHandlers(Router& router, AppContext& ctx) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     UserService(ctx).remove(std::stoll(c.params["id"]), *c.user);
     return emptyResponse(http::status::no_content);
+  });
+
+  // Audit trail for a user: the list of actions and the activity/presence timeline.
+  router.add("GET", "/api/users/:id/activity", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok,
+                        ActivityService(ctx).list(std::stoll(c.params["id"]), parseListQuery(c.query)));
+  });
+  router.add("GET", "/api/users/:id/activity-chart", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    const int hours = c.query.count("hours") ? std::stoi(c.query["hours"]) : 12;
+    return jsonResponse(http::status::ok,
+                        ActivityService(ctx).chart(std::stoll(c.params["id"]), hours));
+  });
+
+  // Users that currently have the dashboard open (live presence over WebSocket).
+  router.add("GET", "/api/presence/online", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    nlohmann::json ids = nlohmann::json::array();
+    if (ctx.presence) {
+      for (const int64_t userId : ctx.presence->onlineUserIds()) {
+        ids.push_back(userId);
+      }
+    }
+    return jsonResponse(http::status::ok, nlohmann::json{{"userIds", ids}});
   });
 
   router.add("GET", "/api/settings/base-domains", true, [&](RequestContext& c) {

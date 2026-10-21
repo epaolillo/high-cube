@@ -130,6 +130,21 @@ public:
                                             const std::string& to);
   int64_t deleteMetricsOlderThan(const std::string& cutoffIso);
 
+  // User activity (audit trail)
+  int64_t recordUserActivity(const UserActivity& activity);
+  Page<UserActivity> listUserActivity(int64_t userId, const ListQuery& query);
+  // Creation timestamps of a user's actions within a window, oldest first.
+  std::vector<std::string> listUserActivityTimestamps(int64_t userId, const std::string& from,
+                                                       const std::string& to);
+  int64_t deleteActivityOlderThan(const std::string& cutoffIso);
+
+  // User presence (dashboard online tracking)
+  void recordPresence(int64_t userId, const std::string& atIso);
+  // Presence heartbeat timestamps within a window, oldest first.
+  std::vector<std::string> listPresenceTimestamps(int64_t userId, const std::string& from,
+                                                   const std::string& to);
+  int64_t deletePresenceOlderThan(const std::string& cutoffIso);
+
 private:
   Database& database_;
   User hydrateUser(SQLite::Statement& st);

@@ -57,6 +57,7 @@ set(ADMIN_SOURCES
   src/admin/api/handlers.cpp
   src/admin/services/json_helpers.cpp
   src/admin/services/user_service.cpp
+  src/admin/services/activity_service.cpp
   src/admin/services/settings_service.cpp
   src/admin/services/server_service.cpp
   src/admin/services/application_service.cpp
@@ -69,6 +70,7 @@ set(ADMIN_SOURCES
   src/admin/github/github_http_client.cpp
   src/admin/github/github_app_auth.cpp
   src/admin/agents/agent_hub.cpp
+  src/admin/presence/presence_hub.cpp
   src/admin/agents/session.cpp
   src/admin/agents/host_terminal.cpp
   src/admin/agents/terminal_polling.cpp

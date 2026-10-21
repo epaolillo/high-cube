@@ -189,6 +189,21 @@ struct MetricRow {
   std::string collectedAt;
 };
 
+// A single audited action performed by a user against the control API.
+struct UserActivity {
+  int64_t id = 0;
+  int64_t userId = 0;
+  std::string action;      // semantic key, e.g. "application.deploy"
+  std::string method;      // HTTP method
+  std::string path;        // concrete request path
+  std::string targetType;  // affected resource type when known
+  std::string targetId;    // affected resource id when known
+  std::string detail;      // optional JSON with extra context
+  int status = 0;          // HTTP response status
+  std::string ip;
+  std::string createdAt;
+};
+
 struct ListQuery {
   int page = 1;
   int pageSize = 10;

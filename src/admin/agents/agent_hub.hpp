@@ -51,6 +51,9 @@ public:
                           std::uint32_t rows);
   void deployReplica(int64_t replicaId);
   void stopReplica(int64_t replicaId);
+  // Stops a container without reading the replica row. Used after the row was deleted.
+  void stopContainer(int64_t serverId, int64_t replicaId, int64_t applicationId,
+                     const std::string& containerId);
   void reconcileServer(int64_t serverId);
   void restartReplica(int64_t replicaId);
   void deleteVolumeOnServers(const std::string& volumeName);

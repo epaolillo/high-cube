@@ -1,14 +1,19 @@
 #include "proxy/nginx_proxy.hpp"
 
-#include <boost/process.hpp>
 #include <spdlog/spdlog.h>
 
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <unistd.h>
+#include <string>
+#include <vector>
 
-namespace bp = boost::process;
+extern char** environ;
 
 namespace highcube::admin {
 
@@ -224,21 +229,70 @@ void NginxProxy::removeApplicationSite(const Application& app) {
   reload();
 }
 
+namespace {
+
+std::string which(const char* name) {
+  const char* path = ::getenv("PATH");
+  if (path == nullptr || *path == '\0') {
+    path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+  }
+  std::stringstream stream(path);
+  std::string dir;
+  while (std::getline(stream, dir, ':')) {
+    if (dir.empty()) {
+      continue;
+    }
+    const auto candidate = std::filesystem::path(dir) / name;
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(candidate, ec)) {
+      return candidate.string();
+    }
+  }
+  return {};
+}
+
+// posix_spawn instead of Boost.Process. bp::system() forks from the io_context
+// thread (which also has spdlog's flush thread) and has taken hc-admin down
+// with SIGSEGV while the supervisor reloads nginx.
+int runAndWait(const std::vector<std::string>& args) {
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 1);
+  for (const auto& arg : args) {
+    argv.push_back(const_cast<char*>(arg.c_str()));
+  }
+  argv.push_back(nullptr);
+  pid_t pid = 0;
+  const int spawned = ::posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+  if (spawned != 0) {
+    return -1;
+  }
+  int status = 0;
+  if (::waitpid(pid, &status, 0) < 0) {
+    return -1;
+  }
+  if (WIFEXITED(status)) {
+    return WEXITSTATUS(status);
+  }
+  return -1;
+}
+
+}  // namespace
+
 std::string NginxProxy::reload() {
-  const auto nginx = bp::search_path("nginx");
+  const auto nginx = which("nginx");
   if (nginx.empty()) {
     const auto message = "nginx not found; site files were written but not loaded";
     spdlog::warn("{}", message);
     return message;
   }
   try {
-    int code = 1;
+    std::vector<std::string> args;
     std::string command;
     if (geteuid() == 0) {
-      command = nginx.string() + " -s reload";
-      code = bp::system(nginx, "-s", "reload");
+      args = {nginx, "-s", "reload"};
+      command = nginx + " -s reload";
     } else {
-      const auto sudoBin = bp::search_path("sudo");
+      const auto sudoBin = which("sudo");
       if (sudoBin.empty()) {
         const auto message = "nginx reload needs root and sudo is not available";
         spdlog::warn("{}", message);
@@ -246,9 +300,10 @@ std::string NginxProxy::reload() {
       }
       // The service user cannot signal the master process. install.sh allows
       // this exact command in sudoers.
-      command = sudoBin.string() + " -n " + nginx.string() + " -s reload";
-      code = bp::system(sudoBin, "-n", nginx.string(), "-s", "reload");
+      args = {sudoBin, "-n", nginx, "-s", "reload"};
+      command = sudoBin + " -n " + nginx + " -s reload";
     }
+    const int code = runAndWait(args);
     if (code != 0) {
       const auto message = command + " failed with status " + std::to_string(code);
       spdlog::warn("{}", message);

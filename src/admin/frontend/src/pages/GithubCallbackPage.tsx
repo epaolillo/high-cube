@@ -18,7 +18,7 @@ export default function GithubCallbackPage() {
     const state = sessionStorage.getItem(`hc_github_state_${id}`) || '';
     if (!code) {
       message.error(t('githubCallbackMissingCode'));
-      navigate('/integrations');
+      navigate('/');
       return;
     }
     api
@@ -29,10 +29,10 @@ export default function GithubCallbackPage() {
         if (data.installUrl) {
           window.location.href = data.installUrl;
         } else {
-          navigate('/integrations');
+          navigate('/');
         }
       })
-      .catch(() => navigate('/integrations'));
+      .catch(() => navigate('/'));
   }, [id, params, navigate, t]);
 
   return (

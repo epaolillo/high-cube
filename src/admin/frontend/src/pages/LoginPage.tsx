@@ -43,7 +43,7 @@ export default function LoginPage() {
           layout="vertical"
           onFinish={async (values) => {
             await login(values.email, values.password);
-            navigate('/applications');
+            navigate('/');
           }}
         >
           <Form.Item name="email" label={t('email')} rules={[{ required: true, type: 'email' }]}>

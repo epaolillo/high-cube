@@ -69,6 +69,9 @@ void MetricsRetentionService::runOnce() {
   ctx_.repos->deleteMetricsOlderThan(oss.str());
   // Keep crash traceability under the same retention window as metrics.
   ctx_.repos->deleteIncidentsOlderThan(oss.str());
+  // The audit trail and presence history share the same retention window.
+  ctx_.repos->deleteActivityOlderThan(oss.str());
+  ctx_.repos->deletePresenceOlderThan(oss.str());
 }
 
 }  // namespace highcube::admin

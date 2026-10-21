@@ -91,6 +91,8 @@ type Application = {
   internalEndpoint?: string;
   env?: Record<string, string>;
   volumes?: { id: number; name: string; mountPath: string }[];
+  createdBy?: number;
+  ownerEmail?: string;
 };
 
 type Deployment = {
@@ -509,11 +511,13 @@ function DeploymentsTab({
   );
 }
 
-export default function ApplicationDetailPage() {
-  const { id } = useParams();
+export default function ApplicationDetailPage({ id: propId }: { id?: number } = {}) {
+  const params = useParams();
+  const id = propId != null ? String(propId) : params.id;
   const { t, i18n } = useTranslation();
   const { isAdmin } = useAuth();
   const [app, setApp] = useState<Application>();
+  const [owners, setOwners] = useState<{ id: number; email: string; name: string }[]>([]);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [replicas, setReplicas] = useState<Replica[]>([]);
   const [incidents, setIncidents] = useState<
@@ -772,6 +776,23 @@ export default function ApplicationDetailPage() {
     await load();
     message.success(t('saved'));
   };
+
+  const saveOwner = async (createdBy: number) => {
+    if (!id) return;
+    await api.patch(`/applications/${id}`, { createdBy });
+    await load();
+    message.success(t('ownerSaved'));
+  };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api
+      .get<{ rows: { id: number; email: string; name: string }[] }>('/users', {
+        params: { page: 1, pageSize: 1000 },
+      })
+      .then(({ data }) => setOwners(data.rows || []))
+      .catch(() => undefined);
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!app || scaleDirty.current) return;
@@ -1702,6 +1723,25 @@ export default function ApplicationDetailPage() {
                   />
                 </Tooltip>
               </div>
+            )}
+            {isAdmin && (
+              <Tooltip title={t('owner')}>
+                <Select
+                  value={app.createdBy || undefined}
+                  onChange={(value) => void saveOwner(value)}
+                  style={{ minWidth: 200 }}
+                  options={[
+                    ...(app.createdBy && !owners.some((user) => user.id === app.createdBy)
+                      ? [{ value: app.createdBy, label: app.ownerEmail || t('owner') }]
+                      : []),
+                    ...owners.map((user) => ({
+                      value: user.id,
+                      label: user.name ? `${user.name} (${user.email})` : user.email,
+                    })),
+                  ]}
+                  placeholder={app.ownerEmail || t('owner')}
+                />
+              </Tooltip>
             )}
             <Tooltip title={t('category')}>
               <Select

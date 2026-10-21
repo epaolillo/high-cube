@@ -10,6 +10,15 @@ nlohmann::json UserService::login(const std::string& email, const std::string& p
   if (!user || !verifyPassword(password, user->passwordHash)) {
     throw std::invalid_argument("Invalid email or password");
   }
+  // Login is not an authenticated route, so record it here now that we know who signed in.
+  UserActivity activity;
+  activity.userId = user->id;
+  activity.action = "auth.login";
+  activity.targetType = "auth";
+  activity.method = "POST";
+  activity.path = "/api/auth/login";
+  activity.status = 200;
+  ActivityService(ctx_).record(activity);
   return {{"token", ctx_.jwt->issue(user->id)}};
 }
 

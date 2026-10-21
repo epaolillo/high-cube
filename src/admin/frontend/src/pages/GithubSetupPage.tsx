@@ -26,7 +26,7 @@ export default function GithubSetupPage() {
         }
         message.success(t('installationSynced'));
       } finally {
-        navigate('/integrations');
+        navigate('/');
       }
     };
     void finish();

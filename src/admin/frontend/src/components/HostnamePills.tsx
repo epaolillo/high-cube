@@ -1,4 +1,6 @@
 import { Popover, Tooltip } from 'antd';
+import { useTranslation } from 'react-i18next';
+import './pills.css';
 
 export type HostnameEntry = { hostname: string; tlsStatus?: string };
 
@@ -33,28 +35,41 @@ function GlobeIcon() {
   );
 }
 
+export type TlsVariant = 'active' | 'pending' | 'error' | 'none';
+
 // Maps a TLS status to the pill color variant.
-function tlsVariant(tlsStatus?: string): 'active' | 'pending' | 'error' | 'none' {
+function tlsVariant(tlsStatus?: string): TlsVariant {
   if (tlsStatus === 'active') return 'active';
   if (tlsStatus === 'pending') return 'pending';
   if (tlsStatus === 'failed' || tlsStatus === 'error') return 'error';
   return 'none';
 }
 
+// Collapsed "+N" uses the most severe status among the hidden hostnames.
+function worstTls(rows: HostnameEntry[]): TlsVariant {
+  const rank: Record<TlsVariant, number> = { error: 3, pending: 2, none: 1, active: 0 };
+  return rows.reduce<TlsVariant>((worst, row) => {
+    const next = tlsVariant(row.tlsStatus);
+    return rank[next] > rank[worst] ? next : worst;
+  }, 'active');
+}
+
 // A single clickable hostname pill.
 function Pill({ row, fixed }: { row: HostnameEntry; fixed?: boolean }) {
+  const { t } = useTranslation();
   const tls = tlsVariant(row.tlsStatus);
   const secure = tls === 'active';
   const href = `${secure ? 'https' : 'http'}://${row.hostname}`;
+  const statusLabel = t(`tls_${tls}`);
   return (
-    <Tooltip title={href}>
+    <Tooltip title={`${href} · ${statusLabel}`}>
       <a
         href={href}
         target="_blank"
         rel="noreferrer"
         className="hc-url-pill"
         data-tls={tls}
-        style={fixed ? { flex: '0 0 auto' } : undefined}
+        style={fixed ? { minWidth: 0 } : undefined}
         onClick={(event) => event.stopPropagation()}
       >
         {secure ? <LockIcon /> : <GlobeIcon />}
@@ -82,7 +97,7 @@ export function HostnamePills({ hostnames, scroll = false, maxWidth = 260, colla
   if (collapse) {
     const [first, ...rest] = hostnames;
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth }}>
+      <div className="hc-pills" style={{ maxWidth }}>
         <Pill row={first} fixed />
         {rest.length > 0 && (
           <Popover
@@ -101,7 +116,7 @@ export function HostnamePills({ hostnames, scroll = false, maxWidth = 260, colla
           >
             <span
               className="hc-url-pill hc-pill-more"
-              data-tls="none"
+              data-tls={worstTls(rest)}
               role="button"
               tabIndex={0}
               onClick={(event) => event.stopPropagation()}

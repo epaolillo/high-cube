@@ -517,6 +517,16 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   auto app = parseBody(body, &existing, actor);
   app.id = id;
   app.createdBy = existing.createdBy;
+  if (body.contains("createdBy") && !body.at("createdBy").is_null()) {
+    if (actor.role != "admin") {
+      throw ForbiddenError("Only an admin can change the application owner");
+    }
+    const auto ownerId = body.at("createdBy").get<int64_t>();
+    if (!ctx_.repos->findUserById(ownerId)) {
+      throw std::invalid_argument("Unknown user");
+    }
+    app.createdBy = ownerId;
+  }
   app.pendingRedeploy = existing.pendingRedeploy;
 
   std::unordered_set<std::string> newHosts;

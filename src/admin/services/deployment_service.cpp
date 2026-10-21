@@ -2,6 +2,8 @@
 
 #include <highcube.pb.h>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <chrono>
 #include <ctime>
@@ -65,10 +67,17 @@ void DeploymentService::retireReplica(int64_t id, bool reconverge) {
   }
   const int64_t applicationId = replica->applicationId;
   const int64_t serverId = replica->serverId;
-  if (ctx_.agentHub) {
-    ctx_.agentHub->stopReplica(id);
-  }
+  const auto containerId = replica->containerId;
+  // Drop the row before touching the agent socket. A fault while sending must
+  // not leave the same replica in place, or the supervisor crash-loops forever.
   ctx_.repos->deleteReplica(id);
+  if (ctx_.agentHub) {
+    try {
+      ctx_.agentHub->stopContainer(serverId, id, applicationId, containerId);
+    } catch (const std::exception& ex) {
+      spdlog::error("stop replica {} failed: {}", id, ex.what());
+    }
+  }
 
   auto app = ctx_.repos->findApplicationById(applicationId);
   if (app) {

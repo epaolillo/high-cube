@@ -4,6 +4,7 @@
 #include "agents/terminal_polling.hpp"
 #include "api/http_types.hpp"
 #include "api/router.hpp"
+#include "presence/presence_hub.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -19,7 +20,8 @@ namespace highcube::admin {
 class HttpServer {
 public:
   HttpServer(net::io_context& ioc, const std::string& address, unsigned short port, Router& router,
-             std::shared_ptr<AgentHub> agentHub, std::shared_ptr<HostTerminalPolling> terminalPolling);
+             std::shared_ptr<AgentHub> agentHub, std::shared_ptr<HostTerminalPolling> terminalPolling,
+             std::shared_ptr<PresenceHub> presenceHub);
 
   void start();
 
@@ -31,6 +33,7 @@ private:
   Router& router_;
   std::shared_ptr<AgentHub> agentHub_;
   std::shared_ptr<HostTerminalPolling> terminalPolling_;
+  std::shared_ptr<PresenceHub> presenceHub_;
 };
 
 }  // namespace highcube::admin

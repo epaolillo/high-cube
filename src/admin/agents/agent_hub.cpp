@@ -700,16 +700,21 @@ void AgentHub::stopReplica(int64_t replicaId) {
   if (!replica) {
     return;
   }
-  auto session = sessionForServer(replica->serverId);
+  stopContainer(replica->serverId, replica->id, replica->applicationId, replica->containerId);
+}
+
+void AgentHub::stopContainer(int64_t serverId, int64_t replicaId, int64_t applicationId,
+                             const std::string& containerId) {
+  auto session = sessionForServer(serverId);
   if (!session) {
     spdlog::warn("agent offline for server {}; replica {} will be removed on reconnect",
-                 replica->serverId, replicaId);
+                 serverId, replicaId);
     return;
   }
   ::highcube::StopReplica order;
-  order.set_replica_id(replica->id);
-  order.set_application_id(replica->applicationId);
-  order.set_container_id(replica->containerId);
+  order.set_replica_id(replicaId);
+  order.set_application_id(applicationId);
+  order.set_container_id(containerId);
   session->send(makeEnvelope(::highcube::STOP_REPLICA, order));
 }
 

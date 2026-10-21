@@ -68,17 +68,27 @@ Response Router::handle(Request request) {
         return errorResponse(http::status::unauthorized, "Unauthorized");
       }
     }
-    try {
-      return route.handler(ctx);
-    } catch (const ForbiddenError& ex) {
-      return errorResponse(http::status::forbidden, ex.what());
-    } catch (const std::invalid_argument& ex) {
-      return errorResponse(http::status::bad_request, ex.what());
-    } catch (const std::runtime_error& ex) {
-      return errorResponse(http::status::conflict, ex.what());
-    } catch (const std::exception& ex) {
-      return errorResponse(http::status::internal_server_error, ex.what());
+    Response response = [&]() {
+      try {
+        return route.handler(ctx);
+      } catch (const ForbiddenError& ex) {
+        return errorResponse(http::status::forbidden, ex.what());
+      } catch (const std::invalid_argument& ex) {
+        return errorResponse(http::status::bad_request, ex.what());
+      } catch (const std::runtime_error& ex) {
+        return errorResponse(http::status::conflict, ex.what());
+      } catch (const std::exception& ex) {
+        return errorResponse(http::status::internal_server_error, ex.what());
+      }
+    }();
+    if (auditHook_ && ctx.user && ctx.method != "GET") {
+      try {
+        auditHook_(ctx, route.pattern, static_cast<int>(response.result_int()));
+      } catch (...) {
+        // Auditing is best-effort and must never affect the response.
+      }
     }
+    return response;
   }
   return errorResponse(http::status::not_found, "Not found");
 }

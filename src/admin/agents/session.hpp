@@ -42,6 +42,8 @@ private:
   void fail(beast::error_code ec, const char* what);
 
   websocket::stream<beast::tcp_stream> ws_;
+  // Captured up front. send() must not query the websocket while a read is pending.
+  net::any_io_executor executor_;
   beast::flat_buffer buffer_;
   MessageHandler onMessage_;
   CloseHandler onClose_;

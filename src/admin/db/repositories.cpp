@@ -953,7 +953,8 @@ void Repositories::updateApplication(const Application& app) {
       "max_restart_count=?, github_app_id=?, repo_full_name=?, port_mappings_json=?, "
       "pending_redeploy=?, scale_mode=?, min_replicas=?, max_replicas=?, "
       "scale_target_cpu_percent=?, scale_target_memory_percent=?, scale_target_load=?, "
-      "scale_cooldown_seconds=?, scale_window_seconds=?, scale_last_action_at=?, icon=? WHERE id=?");
+      "scale_cooldown_seconds=?, scale_window_seconds=?, scale_last_action_at=?, icon=?, "
+      "created_by=? WHERE id=?");
   st.bind(1, app.name);
   st.bind(2, app.type);
   st.bind(3, app.repoUrl);
@@ -991,7 +992,12 @@ void Repositories::updateApplication(const Application& app) {
   st.bind(27, app.scaleWindowSeconds);
   st.bind(28, app.scaleLastActionAt);
   st.bind(29, app.icon);
-  st.bind(30, app.id);
+  if (app.createdBy > 0) {
+    st.bind(30, app.createdBy);
+  } else {
+    st.bind(30);
+  }
+  st.bind(31, app.id);
   st.exec();
   setDependencies(app.id, app.dependencies);
   setTargetServers(app.id, app.targetServers);
@@ -1672,6 +1678,110 @@ int Repositories::countApplicationsUsingGithubApp(int64_t githubAppId) {
   st.bind(1, githubAppId);
   st.executeStep();
   return st.getColumn(0).getInt();
+}
+
+int64_t Repositories::recordUserActivity(const UserActivity& activity) {
+  SQLite::Statement st(
+      database_.db(),
+      "INSERT INTO user_activity (user_id,action,method,path,target_type,target_id,detail,status,ip) "
+      "VALUES (?,?,?,?,?,?,?,?,?)");
+  st.bind(1, activity.userId);
+  st.bind(2, activity.action);
+  st.bind(3, activity.method);
+  st.bind(4, activity.path);
+  st.bind(5, activity.targetType);
+  st.bind(6, activity.targetId);
+  st.bind(7, activity.detail);
+  st.bind(8, activity.status);
+  st.bind(9, activity.ip);
+  st.exec();
+  return database_.db().getLastInsertRowid();
+}
+
+Page<UserActivity> Repositories::listUserActivity(int64_t userId, const ListQuery& query) {
+  Page<UserActivity> page;
+  SQLite::Statement count(database_.db(),
+                          "SELECT COUNT(*) FROM user_activity WHERE user_id=?");
+  count.bind(1, userId);
+  count.executeStep();
+  page.total = count.getColumn(0).getInt64();
+  const int pageSize = clampPageSize(query.pageSize);
+  const int offset = (std::max(1, query.page) - 1) * pageSize;
+  SQLite::Statement st(
+      database_.db(),
+      "SELECT id,user_id,action,method,path,target_type,target_id,detail,status,ip,created_at "
+      "FROM user_activity WHERE user_id=? ORDER BY id DESC LIMIT ? OFFSET ?");
+  st.bind(1, userId);
+  st.bind(2, pageSize);
+  st.bind(3, offset);
+  while (st.executeStep()) {
+    UserActivity activity;
+    activity.id = st.getColumn(0).getInt64();
+    activity.userId = st.getColumn(1).getInt64();
+    activity.action = st.getColumn(2).getString();
+    activity.method = st.getColumn(3).getString();
+    activity.path = st.getColumn(4).getString();
+    activity.targetType = st.getColumn(5).getString();
+    activity.targetId = st.getColumn(6).getString();
+    activity.detail = st.getColumn(7).getString();
+    activity.status = st.getColumn(8).getInt();
+    activity.ip = st.getColumn(9).getString();
+    activity.createdAt = st.getColumn(10).getString();
+    page.rows.push_back(activity);
+  }
+  return page;
+}
+
+std::vector<std::string> Repositories::listUserActivityTimestamps(int64_t userId,
+                                                                  const std::string& from,
+                                                                  const std::string& to) {
+  std::vector<std::string> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT created_at FROM user_activity "
+                       "WHERE user_id=? AND created_at>=? AND created_at<=? "
+                       "ORDER BY created_at ASC");
+  st.bind(1, userId);
+  st.bind(2, from);
+  st.bind(3, to);
+  while (st.executeStep()) {
+    rows.push_back(st.getColumn(0).getString());
+  }
+  return rows;
+}
+
+int64_t Repositories::deleteActivityOlderThan(const std::string& cutoffIso) {
+  SQLite::Statement st(database_.db(), "DELETE FROM user_activity WHERE created_at < ?");
+  st.bind(1, cutoffIso);
+  return st.exec();
+}
+
+void Repositories::recordPresence(int64_t userId, const std::string& atIso) {
+  SQLite::Statement st(database_.db(), "INSERT INTO user_presence (user_id,at) VALUES (?,?)");
+  st.bind(1, userId);
+  st.bind(2, atIso);
+  st.exec();
+}
+
+std::vector<std::string> Repositories::listPresenceTimestamps(int64_t userId,
+                                                              const std::string& from,
+                                                              const std::string& to) {
+  std::vector<std::string> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT at FROM user_presence "
+                       "WHERE user_id=? AND at>=? AND at<=? ORDER BY at ASC");
+  st.bind(1, userId);
+  st.bind(2, from);
+  st.bind(3, to);
+  while (st.executeStep()) {
+    rows.push_back(st.getColumn(0).getString());
+  }
+  return rows;
+}
+
+int64_t Repositories::deletePresenceOlderThan(const std::string& cutoffIso) {
+  SQLite::Statement st(database_.db(), "DELETE FROM user_presence WHERE at < ?");
+  st.bind(1, cutoffIso);
+  return st.exec();
 }
 
 }  // namespace highcube::admin

@@ -7,6 +7,7 @@
 #include "config/admin_config.hpp"
 #include "db/repositories.hpp"
 #include "domain/models.hpp"
+#include "presence/presence_hub.hpp"
 #include "proxy/nginx_proxy.hpp"
 
 #include <memory>
@@ -30,6 +31,7 @@ struct AppContext {
   std::unique_ptr<NginxProxy> proxy;
   std::unique_ptr<CertbotService> certbot;
   std::shared_ptr<AgentHub> agentHub;
+  std::shared_ptr<PresenceHub> presence;
   std::unique_ptr<PlacementService> placement;
   std::unique_ptr<DeploymentService> deployments;
   std::unique_ptr<GithubAppService> githubApps;
@@ -44,6 +46,15 @@ nlohmann::json deploymentToJson(const Deployment& deployment);
 nlohmann::json replicaToJson(const Replica& replica);
 nlohmann::json replicaIncidentToJson(const ReplicaIncident& incident);
 nlohmann::json githubAppToJson(const GithubApp& app);
+nlohmann::json userActivityToJson(const UserActivity& activity);
+
+// Maps an HTTP method and matched route pattern to a stable, human-oriented
+// action key plus the affected resource, used by the audit trail.
+struct DerivedActivity {
+  std::string action;
+  std::string targetType;
+};
+DerivedActivity deriveActivity(const std::string& method, const std::string& routePattern);
 
 class UserService {
 public:
@@ -59,6 +70,20 @@ public:
   nlohmann::json listMyBaseDomains(const User& actor);
   nlohmann::json hostnameSuggestion();
   nlohmann::json autocomplete(const std::string& q);
+
+private:
+  AppContext& ctx_;
+};
+
+class ActivityService {
+public:
+  explicit ActivityService(AppContext& ctx);
+  // Persist one audited action. Best-effort: never throws to the caller.
+  void record(const UserActivity& activity);
+  // Paginated audit trail for a user.
+  nlohmann::json list(int64_t userId, const ListQuery& query);
+  // Activity vs. presence timeline for the last `hours` hours, bucketed.
+  nlohmann::json chart(int64_t userId, int hours);
 
 private:
   AppContext& ctx_;
