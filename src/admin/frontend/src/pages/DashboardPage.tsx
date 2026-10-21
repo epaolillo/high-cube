@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import { connectPresence } from '../presence/presenceClient';
 import { ApplicationsSector } from '../dashboard/ApplicationsSector';
+import { DashboardStateProvider } from '../dashboard/DashboardState';
 import { ServersSector } from '../dashboard/ServersSector';
 import { SettingsSector } from '../dashboard/SettingsSector';
 import { UsersSector } from '../dashboard/UsersSector';
@@ -34,58 +35,70 @@ export default function DashboardPage() {
     return () => presence.close();
   }, []);
 
+  // Close the drawer when pressing the [ESC] key.
+  useEffect(() => {
+    if (!drawer) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDrawer();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [drawer, closeDrawer]);
+
   const userInitial = (profile?.name || profile?.email || 'U').slice(0, 1).toUpperCase();
 
   return (
-    <div className="hc-dash">
-      <div className="hc-dash__bar">
-        <div className="hc-dash__brand">
-          <img src="/logo.png" alt="" />
-          <span>{t('appName')}</span>
-          <small>{t('controlPlane')}</small>
-        </div>
-        <div className="hc-dash__spacer" />
-        <Dropdown
-          trigger={['click']}
-          menu={{
-            items: [
-              { key: 'profile', label: t('profile'), onClick: () => setDrawer({ kind: 'profile' }) },
-              { key: 'logout', label: t('logout'), onClick: logout },
-            ],
-          }}
-        >
-          <div className="hc-dash__user">
-            <span className="hc-dash__avatar">{userInitial}</span>
-            <span>{profile?.email || profile?.name}</span>
+    <DashboardStateProvider>
+      <div className="hc-dash">
+        <div className="hc-dash__bar">
+          <div className="hc-dash__brand">
+            <img src="/logo.png" alt="" />
+            <span>{t('appName')}</span>
+            <small>{t('controlPlane')}</small>
           </div>
-        </Dropdown>
-      </div>
+          <div className="hc-dash__spacer" />
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                { key: 'profile', label: t('profile'), onClick: () => setDrawer({ kind: 'profile' }) },
+                { key: 'logout', label: t('logout'), onClick: logout },
+              ],
+            }}
+          >
+            <div className="hc-dash__user">
+              <span className="hc-dash__avatar">{userInitial}</span>
+              <span>{profile?.email || profile?.name}</span>
+            </div>
+          </Dropdown>
+        </div>
 
-      <div className="hc-dash__board">
-        {isAdmin && <ServersSector onOpen={(id) => setDrawer({ kind: 'server', id })} />}
-        <ApplicationsSector
-          isAdmin={isAdmin}
-          onOpen={(id) => setDrawer({ kind: 'app', id })}
-          onOpenIntegrations={() => setDrawer({ kind: 'integrations' })}
-        />
-        {isAdmin && <SettingsSector />}
-        {isAdmin && <UsersSector onOpen={(id) => setDrawer({ kind: 'user', id })} />}
-      </div>
+        <div className="hc-dash__board">
+          {isAdmin && <ServersSector onOpen={(id) => setDrawer({ kind: 'server', id })} />}
+          <ApplicationsSector
+            isAdmin={isAdmin}
+            onOpen={(id) => setDrawer({ kind: 'app', id })}
+            onOpenIntegrations={() => setDrawer({ kind: 'integrations' })}
+          />
+          {isAdmin && <SettingsSector />}
+          {isAdmin && <UsersSector onOpen={(id) => setDrawer({ kind: 'user', id })} />}
+        </div>
 
-      <Drawer
-        className="hc-drawer"
-        width="min(1200px, 94vw)"
-        open={!!drawer}
-        onClose={closeDrawer}
-        destroyOnClose
-        title={null}
-      >
-        {drawer?.kind === 'app' && <ApplicationDetailPage id={drawer.id} />}
-        {drawer?.kind === 'server' && <ServerDetailPage id={drawer.id} />}
-        {drawer?.kind === 'user' && <UserDetailPage id={drawer.id} onSaved={closeDrawer} />}
-        {drawer?.kind === 'profile' && <ProfilePage />}
-        {drawer?.kind === 'integrations' && <IntegrationsPage />}
-      </Drawer>
-    </div>
+        <Drawer
+          className="hc-drawer"
+          width="min(1200px, 94vw)"
+          open={!!drawer}
+          onClose={closeDrawer}
+          destroyOnClose
+          title={null}
+        >
+          {drawer?.kind === 'app' && <ApplicationDetailPage id={drawer.id} />}
+          {drawer?.kind === 'server' && <ServerDetailPage id={drawer.id} />}
+          {drawer?.kind === 'user' && <UserDetailPage id={drawer.id} onSaved={closeDrawer} />}
+          {drawer?.kind === 'profile' && <ProfilePage />}
+          {drawer?.kind === 'integrations' && <IntegrationsPage />}
+        </Drawer>
+      </div>
+    </DashboardStateProvider>
   );
 }

@@ -14,7 +14,9 @@ export type TerminalTransport = {
 
 export type TerminalTarget =
   | { kind: 'server'; id: string }
-  | { kind: 'replica'; id: string };
+  | { kind: 'replica'; id: string }
+  // Read-only container output; send() and resize() have no effect on it.
+  | { kind: 'replica-logs'; id: string };
 
 type RequestOptions = {
   method?: string;
@@ -40,9 +42,9 @@ function delay(ms: number) {
 }
 
 function apiBase(target: TerminalTarget) {
-  return target.kind === 'server'
-    ? `/api/servers/${target.id}/terminal`
-    : `/api/replicas/${target.id}/terminal`;
+  if (target.kind === 'server') return `/api/servers/${target.id}/terminal`;
+  if (target.kind === 'replica-logs') return `/api/replicas/${target.id}/logs`;
+  return `/api/replicas/${target.id}/terminal`;
 }
 
 async function request(url: string, signal: AbortSignal, options: RequestOptions = {}) {

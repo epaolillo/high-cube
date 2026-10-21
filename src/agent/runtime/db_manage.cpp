@@ -124,14 +124,20 @@ std::string sqlString(const std::string& value) {
   return out;
 }
 
-std::string hexLiteral(const std::string& value) {
-  static constexpr char kHex[] = "0123456789ABCDEF";
-  std::string out = "0x";
-  out.reserve(2 + value.size() * 2);
-  for (const unsigned char c : value) {
-    out.push_back(kHex[c >> 4]);
-    out.push_back(kHex[c & 0xF]);
+std::string myString(const std::string& value) {
+  // MySQL string literal for IDENTIFIED BY. A hex literal (0x...) is not valid
+  // there, so quote the value and escape the characters that are special inside
+  // a single-quoted string in the default SQL mode. Control characters are
+  // already rejected before the payload reaches the agent.
+  std::string out = "'";
+  out.reserve(value.size() + 2);
+  for (const char ch : value) {
+    if (ch == '\'' || ch == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(ch);
   }
+  out.push_back('\'');
   return out;
 }
 
@@ -426,7 +432,7 @@ nlohmann::json createMysqlUser(const Session& session, const nlohmann::json& bod
     throw Failure("password is required");
   }
   execOrThrow(session, "mysql",
-              "CREATE USER " + myAccount(name, "%") + " IDENTIFIED BY " + hexLiteral(password));
+              "CREATE USER " + myAccount(name, "%") + " IDENTIFIED BY " + myString(password));
   return nlohmann::json::object();
 }
 
@@ -460,7 +466,7 @@ nlohmann::json updateMysqlUser(const Session& session, const nlohmann::json& bod
   const auto account = rename ? newName : name;
   if (!password.empty()) {
     for (const auto& host : hosts) {
-      sql += "ALTER USER " + myAccount(account, host) + " IDENTIFIED BY " + hexLiteral(password) +
+      sql += "ALTER USER " + myAccount(account, host) + " IDENTIFIED BY " + myString(password) +
              ";\n";
     }
   }
@@ -485,6 +491,63 @@ nlohmann::json deleteMysqlUser(const Session& session, const nlohmann::json& bod
   }
   execOrThrow(session, "mysql", sql);
   return nlohmann::json::object();
+}
+
+nlohmann::json catalogMysql(const Session& session) {
+  // One round-trip: users and databases share a single client session.
+  const auto lines = queryLines(
+      session, "mysql",
+      "SELECT CAST(CONCAT('U\t', User, '\t', Host) AS CHAR CHARACTER SET utf8mb4) "
+      "FROM mysql.user WHERE User <> '' "
+      "UNION ALL "
+      "SELECT CAST(CONCAT('D\t', SCHEMA_NAME) AS CHAR CHARACTER SET utf8mb4) "
+      "FROM information_schema.SCHEMATA");
+  std::vector<std::string> userLines;
+  nlohmann::json databases = nlohmann::json::array();
+  for (const auto& line : lines) {
+    const auto parts = splitOn(line, '\t');
+    if (parts.empty()) {
+      continue;
+    }
+    if (parts[0] == "U" && parts.size() >= 3) {
+      userLines.push_back(parts[1] + "\t" + parts[2]);
+    } else if (parts[0] == "D" && parts.size() >= 2) {
+      const auto name = trim(parts[1]);
+      if (!name.empty() && !kMysqlHiddenDatabases.count(name)) {
+        databases.push_back(name);
+      }
+    }
+  }
+  nlohmann::json users = nlohmann::json::array();
+  std::string current;
+  std::string host;
+  auto flush = [&]() {
+    if (current.empty() || kMysqlHiddenUsers.count(current) || current.rfind("mysql.", 0) == 0) {
+      return;
+    }
+    const bool management = current == session.adminUser;
+    users.push_back({{"name", current},
+                     {"host", host},
+                     {"protected", management},
+                     {"superuser", management}});
+  };
+  for (const auto& line : userLines) {
+    const auto parts = splitOn(line, '\t');
+    if (parts.size() < 2) {
+      continue;
+    }
+    const auto name = parts[0];
+    const auto rowHost = parts[1];
+    if (name != current) {
+      flush();
+      current = name;
+      host = rowHost;
+    } else if (rowHost == "%" || host != "%") {
+      host = rowHost == "%" ? rowHost : host;
+    }
+  }
+  flush();
+  return {{"users", users}, {"privileges", privilegesFor(session)}, {"databases", databases}};
 }
 
 nlohmann::json listMysqlDatabases(const Session& session) {
@@ -710,6 +773,34 @@ nlohmann::json deletePostgresUser(const Session& session, const nlohmann::json& 
   }
   execOrThrow(session, session.maintenanceDb, "DROP ROLE " + pgIdent(name));
   return nlohmann::json::object();
+}
+
+nlohmann::json catalogPostgres(const Session& session) {
+  const auto lines = queryLines(
+      session, session.maintenanceDb,
+      "SELECT 'U|' || rolname || '|' || rolsuper::int::text FROM pg_roles "
+      "WHERE rolcanlogin AND rolname !~ '^pg_' "
+      "UNION ALL "
+      "SELECT 'D|' || datname || '|' FROM pg_database "
+      "WHERE datistemplate = false AND datallowconn");
+  nlohmann::json users = nlohmann::json::array();
+  nlohmann::json databases = nlohmann::json::array();
+  for (const auto& line : lines) {
+    const auto kind = field(line, '|', 0);
+    const auto name = field(line, '|', 1);
+    if (!isIdent(name)) {
+      continue;
+    }
+    if (kind == "U") {
+      const bool superuser = truthy(field(line, '|', 2)) || name == session.adminUser;
+      users.push_back({{"name", name},
+                       {"protected", name == session.adminUser},
+                       {"superuser", superuser}});
+    } else if (kind == "D" && name != "template0" && name != "template1") {
+      databases.push_back(name);
+    }
+  }
+  return {{"users", users}, {"privileges", privilegesFor(session)}, {"databases", databases}};
 }
 
 nlohmann::json listPostgresDatabases(const Session& session) {
@@ -981,6 +1072,9 @@ nlohmann::json dispatch(const Session& session, const nlohmann::json& body) {
   const bool postgres = session.engine == "postgres";
   if (op == "list_users") {
     return postgres ? listPostgresUsers(session) : listMysqlUsers(session);
+  }
+  if (op == "catalog") {
+    return postgres ? catalogPostgres(session) : catalogMysql(session);
   }
   if (op == "create_user") {
     return postgres ? createPostgresUser(session, body) : createMysqlUser(session, body);

@@ -40,16 +40,37 @@ function errorText(error: unknown, fallback: string) {
   return fallback;
 }
 
-async function runDb(appId: string, body: Record<string, unknown>, fallback: string) {
-  const started = await api.post(`/applications/${appId}/db-manage`, body, { suppressErrorToast: true });
+function aborted(error: unknown, signal?: AbortSignal) {
+  return signal?.aborted || axios.isCancel(error);
+}
+
+async function runDb(
+  appId: string,
+  body: Record<string, unknown>,
+  fallback: string,
+  signal?: AbortSignal,
+) {
+  const started = await api.post(`/applications/${appId}/db-manage`, body, {
+    suppressErrorToast: true,
+    signal,
+  });
   const requestId = started.data.requestId as string;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 400));
+  // The server holds each GET until the agent answers (or for a few seconds).
+  // A handful of these replaces polling several times a second.
+  const deadline = Date.now() + 70000;
+  while (Date.now() < deadline) {
+    const startedAt = Date.now();
     const polled = await api.get(`/applications/${appId}/db-manage/${requestId}`, {
       suppressErrorToast: true,
+      signal,
     });
     const status = polled.data.status as string;
-    if (status === 'pending') continue;
+    if (status === 'pending') {
+      if (Date.now() - startedAt < 1000) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      continue;
+    }
     if (status !== 'ok') {
       throw new Error(polled.data.error || fallback);
     }
@@ -91,6 +112,25 @@ export function DatabaseManagementTab({
     [t],
   );
 
+  const loadCatalog = useCallback(async (signal?: AbortSignal) => {
+    setUsersLoading(true);
+    setDatabasesLoading(true);
+    try {
+      const result = await runDb(appId, { op: 'catalog' }, t('dbManageTimeout'), signal);
+      setUsers((result.users as DbUser[]) || []);
+      const names = (result.databases as string[]) || [];
+      setDatabases(names);
+      setDatabase((current) => current || names[0]);
+    } catch (error) {
+      if (!aborted(error, signal)) fail(error);
+    } finally {
+      if (!signal?.aborted) {
+        setUsersLoading(false);
+        setDatabasesLoading(false);
+      }
+    }
+  }, [appId, fail, t]);
+
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
@@ -118,10 +158,10 @@ export function DatabaseManagementTab({
   }, [appId, fail, t]);
 
   const loadGrants = useCallback(
-    async (name: string) => {
+    async (name: string, signal?: AbortSignal) => {
       setGrantsLoading(true);
       try {
-        const result = await runDb(appId, { op: 'get_grants', database: name }, t('dbManageTimeout'));
+        const result = await runDb(appId, { op: 'get_grants', database: name }, t('dbManageTimeout'), signal);
         const rows = ((result.rows as GrantRow[]) || []).map((row) => ({
           ...row,
           grants: Object.fromEntries(privileges.map((privilege) => [privilege, Boolean(row.grants?.[privilege])])),
@@ -129,24 +169,29 @@ export function DatabaseManagementTab({
         setGrantRows(rows);
         setGrantSnapshot(JSON.stringify(rows));
       } catch (error) {
+        if (aborted(error, signal)) return;
         setGrantRows([]);
         setGrantSnapshot('');
         fail(error);
       } finally {
-        setGrantsLoading(false);
+        if (!signal?.aborted) setGrantsLoading(false);
       }
     },
     [appId, fail, privileges, t],
   );
 
   useEffect(() => {
-    void loadUsers();
-    void loadDatabases();
-  }, [loadUsers, loadDatabases]);
+    const controller = new AbortController();
+    void loadCatalog(controller.signal);
+    return () => controller.abort();
+  }, [loadCatalog]);
 
   useEffect(() => {
-    if (database) void loadGrants(database);
-  }, [database, loadGrants]);
+    if (section !== 'databases' || !database) return undefined;
+    const controller = new AbortController();
+    void loadGrants(database, controller.signal);
+    return () => controller.abort();
+  }, [section, database, loadGrants]);
 
   const grantsDirty = useMemo(
     () => grantSnapshot !== '' && JSON.stringify(grantRows) !== grantSnapshot,

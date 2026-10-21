@@ -45,7 +45,12 @@ void HostTerminalRelay::start(http::request<http::string_body> req) {
             relay->closeSocket();
           }
         });
-    if (self->kind_ == Kind::Container) {
+    if (self->kind_ == Kind::Logs) {
+      // The browser treats the first frame as "stream ready"; a quiet container may print
+      // nothing for a long time.
+      self->onOutput("");
+      self->hub_.openReplicaLogs(self->replicaId_, self->streamId_);
+    } else if (self->kind_ == Kind::Container) {
       self->hub_.openContainerTerminal(self->replicaId_, self->streamId_, self->cols_, self->rows_);
     } else {
       self->hub_.openHostTerminal(self->serverId_, self->streamId_, self->cols_, self->rows_);
@@ -89,6 +94,10 @@ void HostTerminalRelay::doRead() {
     const auto bytes = self->buffer_.cdata();
     std::string data(static_cast<const char*>(bytes.data()), bytes.size());
     self->buffer_.consume(self->buffer_.size());
+    if (self->kind_ == Kind::Logs) {
+      self->doRead();
+      return;
+    }
     if (self->ws_.got_text()) {
       const auto message = nlohmann::json::parse(data, nullptr, false);
       if (!message.is_discarded() && message.value("type", "") == "resize") {

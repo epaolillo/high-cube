@@ -40,14 +40,15 @@ private:
     const auto path = pathOnly(target);
     const bool isUpgrade = request_.method() == http::verb::get && websocket::is_upgrade(request_);
     const bool isAgentConnect = path == "/api/agents/connect";
-    const bool isHostTerminal = isHostTerminalPath(path);
+    const bool isTerminal =
+        isHostTerminalPath(path) || isReplicaTerminalPath(path) || isReplicaLogsPath(path);
 
     if (isUpgrade && presenceHub_ && isPresencePath(path)) {
       presenceHub_->onUpgrade(stream_.release_socket(), std::move(request_));
       return;
     }
 
-    if (isUpgrade && agentHub_ && (isAgentConnect || isHostTerminal)) {
+    if (isUpgrade && agentHub_ && (isAgentConnect || isTerminal)) {
       agentHub_->onUpgrade(stream_.release_socket(), std::move(request_));
       return;
     }
@@ -55,6 +56,11 @@ private:
     auto self = shared_from_this();
     if (terminalPolling_ &&
         terminalPolling_->tryPollOutput(request_, [self](Response response) {
+          self->writeResponse(std::move(response));
+        })) {
+      return;
+    }
+    if (agentHub_ && agentHub_->tryWaitDbManage(request_, [self](Response response) {
           self->writeResponse(std::move(response));
         })) {
       return;

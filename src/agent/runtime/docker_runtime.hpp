@@ -7,6 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -32,6 +33,10 @@ public:
   void renameVolume(const std::string& fromName, const std::string& toName);
   std::string inspectStatus(const std::string& containerId);
   std::string containerStatsJson(const std::string& containerId);
+  // Metrics payloads keyed by container name, gathered with one docker stats and one
+  // docker inspect call. Containers Docker no longer knows are absent from the result.
+  std::unordered_map<std::string, std::string> containerStatsByName(
+      const std::vector<std::string>& containers);
   bool containerHasShell(const std::string& containerId);
   nlohmann::json inspectVolumes(int64_t applicationId, const std::vector<::highcube::VolumeSpec>& volumes);
   // Returns true when the given TCP port is free to bind on this host.

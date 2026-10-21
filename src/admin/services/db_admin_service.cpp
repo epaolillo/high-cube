@@ -310,8 +310,8 @@ nlohmann::json DatabaseAdminService::start(int64_t applicationId, const nlohmann
   AgentHub::DbManageEffect effect;
   effect.applicationId = app->id;
 
-  if (op == "list_users" || op == "list_databases") {
-    // No extra fields.
+  if (op == "list_users" || op == "list_databases" || op == "catalog") {
+    // No extra fields. catalog returns users and databases in one agent round-trip.
   } else if (op == "create_user") {
     const auto name = body.value("name", std::string{});
     const auto password = body.value("password", std::string{});

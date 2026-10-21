@@ -33,7 +33,9 @@ public:
   bool tryPollOutput(const Request& request, const Reply& reply);
 
   Response open(int64_t serverId, const User& user, const std::string& body);
-  Response openReplica(int64_t replicaId, const User& user, const std::string& body);
+  // logs opens the read-only container output stream instead of a shell.
+  Response openReplica(int64_t replicaId, const User& user, const std::string& body,
+                       bool logs = false);
   Response write(int64_t serverId, const std::string& streamId, const User& user,
                  const std::string& data);
   Response writeReplica(int64_t replicaId, const std::string& streamId, const User& user,

@@ -14,6 +14,10 @@ namespace {
 // A container must miss several heartbeats (reported every ~30s) before we treat
 // it as fallen, to avoid reacting to a single late or dropped metrics message.
 constexpr int kDownThresholdSeconds = 120;
+// Silence alone is not proof: a frozen or reconnecting agent, a restarted admin or a slow
+// Docker daemon silence every replica of a server at once. The agent must also have
+// completed this many full container rounds that no longer listed the replica.
+constexpr int kMissedRoundsBeforeDown = 2;
 
 std::string nowIso() {
   const auto now = std::chrono::system_clock::now();
@@ -106,15 +110,23 @@ void SupervisorService::superviseApplication(const Application& app) {
     if (age <= kDownThresholdSeconds) {
       continue;
     }
+    // lastSeenAt has second precision, so the round that last listed the replica can
+    // still count here; one extra round covers it.
+    const int rounds =
+        ctx_.agentHub ? ctx_.agentHub->containerRoundsSince(replica.serverId, last) : 0;
+    if (rounds <= kMissedRoundsBeforeDown) {
+      continue;
+    }
 
-    // The container stopped reporting while its server is up: treat it as fallen.
+    // The agent keeps reporting its containers and this one is no longer among them.
     ReplicaIncident incident;
     incident.applicationId = app.id;
     incident.replicaId = replica.id;
     incident.serverId = replica.serverId;
     incident.kind = "down";
-    incident.detail = "No container metrics for " + std::to_string(age) +
-                      "s (last status '" + replica.status + "'); relaunching";
+    incident.detail = "Missing from " + std::to_string(rounds) + " agent reports over " +
+                      std::to_string(age) + "s (last status '" + replica.status +
+                      "'); relaunching";
     incident.restartCount = replica.restartCount;
     ctx_.repos->recordReplicaIncident(incident);
     spdlog::warn("supervisor: replica {} of app {} fell silent for {}s; relaunching",

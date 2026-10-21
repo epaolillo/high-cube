@@ -10,6 +10,7 @@
 #include <boost/beast/websocket.hpp>
 #include <highcube.pb.h>
 
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -71,6 +72,7 @@ private:
   bool connected_ = false;
   bool writing_ = false;
   bool reconnectPending_ = false;
+  std::atomic<bool> containerReportRunning_{false};
 };
 
 }  // namespace highcube::agent

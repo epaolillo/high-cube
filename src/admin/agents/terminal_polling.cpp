@@ -61,7 +61,8 @@ bool parseReplicaOutputPath(const std::string& path, int64_t& replicaId, std::st
     parts.push_back(part);
   }
   if (parts.size() != 8 || !parts[0].empty() || parts[1] != "api" || parts[2] != "replicas" ||
-      parts[4] != "terminal" || parts[5] != "sessions" || parts[6].empty() || parts[7] != "output") {
+      (parts[4] != "terminal" && parts[4] != "logs") || parts[5] != "sessions" ||
+      parts[6].empty() || parts[7] != "output") {
     return false;
   }
   try {
@@ -141,7 +142,7 @@ Response HostTerminalPolling::open(int64_t serverId, const User& user, const std
 }
 
 Response HostTerminalPolling::openReplica(int64_t replicaId, const User& user,
-                                          const std::string& body) {
+                                          const std::string& body, bool logs) {
   auto replica = repos_.findReplicaById(replicaId);
   auto app = replica ? repos_.findApplicationById(replica->applicationId) : std::nullopt;
   if (!replica || !app) {
@@ -181,7 +182,11 @@ Response HostTerminalPolling::openReplica(int64_t replicaId, const User& user,
           net::post(self->ioc_, [self, streamId]() { self->onAgentClosed(streamId); });
         }
       });
-  hub_.openContainerTerminal(replicaId, streamId, cols, rows);
+  if (logs) {
+    hub_.openReplicaLogs(replicaId, streamId);
+  } else {
+    hub_.openContainerTerminal(replicaId, streamId, cols, rows);
+  }
   return jsonResponse(http::status::created, {{"streamId", streamId}});
 }
 

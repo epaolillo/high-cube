@@ -1592,6 +1592,31 @@ std::vector<MetricRow> Repositories::listServerMetrics(int64_t serverId, const s
   return rows;
 }
 
+std::vector<MetricRow> Repositories::listRecentServerMetrics(int64_t serverId, int limit) {
+  std::vector<MetricRow> rows;
+  if (limit <= 0) {
+    return rows;
+  }
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,server_id,replica_id,payload_json,collected_at FROM metrics "
+                       "WHERE server_id=? AND replica_id IS NULL "
+                       "ORDER BY collected_at DESC LIMIT ?");
+  st.bind(1, serverId);
+  st.bind(2, limit);
+  while (st.executeStep()) {
+    MetricRow row;
+    row.id = st.getColumn(0).getInt64();
+    row.serverId = st.getColumn(1).getInt64();
+    if (!st.getColumn(2).isNull()) {
+      row.replicaId = st.getColumn(2).getInt64();
+    }
+    row.payloadJson = st.getColumn(3).getString();
+    row.collectedAt = st.getColumn(4).getString();
+    rows.push_back(row);
+  }
+  return rows;
+}
+
 std::vector<MetricRow> Repositories::listReplicaMetrics(int64_t replicaId, const std::string& from,
                                                         const std::string& to) {
   std::vector<MetricRow> rows;

@@ -13,7 +13,7 @@ class AgentHub;
 
 class HostTerminalRelay : public std::enable_shared_from_this<HostTerminalRelay> {
 public:
-  enum class Kind { Host, Container };
+  enum class Kind { Host, Container, Logs };
 
   HostTerminalRelay(tcp::socket socket, AgentHub& hub, int64_t serverId, std::string streamId,
                     std::uint32_t cols, std::uint32_t rows, Kind kind = Kind::Host,

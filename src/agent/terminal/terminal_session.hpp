@@ -15,6 +15,8 @@ public:
                 unsigned rows = 32);
   void openContainer(const std::string& containerId, const std::string& command,
                      TerminalOutputFn onOutput, unsigned cols = 120, unsigned rows = 32);
+  // Follows the container output (stdout and stderr), starting with its last tailLines lines.
+  void openLogs(const std::string& containerId, unsigned tailLines, TerminalOutputFn onOutput);
   void write(const std::string& data);
   void resize(unsigned cols, unsigned rows);
   void close();

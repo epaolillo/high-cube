@@ -57,6 +57,13 @@ void TerminalSession::openContainer(const std::string& containerId, const std::s
   openHost(cmd, std::move(onOutput), cols, rows);
 }
 
+void TerminalSession::openLogs(const std::string& containerId, unsigned tailLines,
+                               TerminalOutputFn onOutput) {
+  const std::string cmd =
+      "docker logs -f --tail " + std::to_string(tailLines) + " " + containerId;
+  openHost(cmd, std::move(onOutput), 200, 50);
+}
+
 void TerminalSession::write(const std::string& data) {
   std::lock_guard lock(mutex_);
   if (masterFd_ >= 0) {

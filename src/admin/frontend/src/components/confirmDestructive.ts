@@ -25,6 +25,14 @@ export async function confirmDestructive(t: TFunction, options: ConfirmOptions =
     confirmButtonColor: options.danger === false ? '#635BFF' : '#E5484D',
     cancelButtonColor: '#8898AA',
     focusCancel: true,
+    // Keep the confirmation above Ant Design modals (zIndex 1000), otherwise it
+    // renders behind the open form and cannot be clicked.
+    didOpen: () => {
+      const container = Swal.getContainer();
+      if (container) {
+        container.style.zIndex = '2000';
+      }
+    },
   });
   return result.isConfirmed;
 }

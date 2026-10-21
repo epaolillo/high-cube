@@ -107,6 +107,10 @@ DerivedActivity deriveActivity(const std::string& method, const std::string& rou
   if (key == "POST /api/applications/:id/port-check") {
     return {"", ""};
   }
+  // Watching container output is read-only, like any GET.
+  if (routePattern.find("/logs/sessions") != std::string::npos) {
+    return {"", ""};
+  }
 
   const auto it = kMap.find(key);
   if (it == kMap.end()) {

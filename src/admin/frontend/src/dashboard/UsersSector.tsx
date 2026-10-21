@@ -11,46 +11,26 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
+import { PAGE_SIZE, useDashboardState } from './DashboardState';
 import { Pager } from './Pager';
-import { PAGE_SIZE, usePagedResource } from './usePagedResource';
 
 type UserRow = { id: number; email: string; name: string; role: string };
 
 export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
   const { t } = useTranslation();
+  const { data, refresh, setUsersParams } = useDashboardState();
+  const rows = data.users.rows as UserRow[];
+  const total = data.users.total;
+  const onlineIds = new Set<number>(data.onlineUserIds);
   const [page, setPage] = useState(1);
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const bump = () => setRefreshKey((n) => n + 1);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
 
-  const { rows, total } = usePagedResource<UserRow>('/users', {
-    page,
-    params: { order },
-    refreshKey,
-  });
-
-  // Live online presence: poll the set of users currently viewing the dashboard.
-  const [onlineIds, setOnlineIds] = useState<Set<number>>(new Set());
   useEffect(() => {
-    let stopped = false;
-    const load = async () => {
-      try {
-        const { data } = await api.get('/presence/online', { suppressErrorToast: true });
-        if (!stopped) setOnlineIds(new Set<number>(data.userIds || []));
-      } catch {
-        /* ignore transient polling errors */
-      }
-    };
-    load();
-    const timer = window.setInterval(load, 5000);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, []);
+    setUsersParams(page, order);
+  }, [page, order, setUsersParams]);
 
   useEffect(() => setSel(new Set()), [page, order]);
 
@@ -67,14 +47,14 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
     await api.post('/users', values);
     message.success(t('saved'));
     setCreateOpen(false);
-    bump();
+    refresh();
   };
   const removeOne = (u: UserRow) =>
     confirmDestructive(t, { text: u.email }).then((ok) => {
       if (!ok) return;
       return api.delete(`/users/${u.id}`).then(() => {
         message.success(t('deleted'));
-        bump();
+        refresh();
       });
     });
   const bulkDelete = async () => {
@@ -82,7 +62,7 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
     await Promise.all([...sel].map((id) => api.delete(`/users/${id}`)));
     message.success(t('deleted'));
     setSel(new Set());
-    bump();
+    refresh();
   };
 
   return (

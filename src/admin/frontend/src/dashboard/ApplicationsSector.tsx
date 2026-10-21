@@ -17,8 +17,8 @@ import { confirmDestructive } from '../components/confirmDestructive';
 import { HostnamePills } from '../components/HostnamePills';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
+import { PAGE_SIZE, useDashboardState } from './DashboardState';
 import { Pager } from './Pager';
-import { PAGE_SIZE, usePagedResource } from './usePagedResource';
 
 type AppRow = {
   id: number;
@@ -50,21 +50,19 @@ export function ApplicationsSector({
   onOpenIntegrations: () => void;
 }) {
   const { t } = useTranslation();
+  const { data, refresh, setApplicationsParams } = useDashboardState();
+  const rows = data.applications.rows as AppRow[];
+  const total = data.applications.total;
   const [page, setPage] = useState(1);
   const [category, setCategory] = useState<AppCategory>('other');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const bump = () => setRefreshKey((n) => n + 1);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [iconEdit, setIconEdit] = useState<AppRow | null>(null);
 
-  const { rows, total } = usePagedResource<AppRow>('/applications', {
-    page,
-    params: { type: category, order },
-    refreshKey,
-    pollMs: 4000,
-  });
+  useEffect(() => {
+    setApplicationsParams(page, category, order);
+  }, [page, category, order, setApplicationsParams]);
 
   useEffect(() => setSel(new Set()), [page, category, order]);
 
@@ -85,21 +83,21 @@ export function ApplicationsSector({
       if (!ok) return;
       return api.delete(`/applications/${a.id}`).then(() => {
         message.success(t('deleted'));
-        bump();
+        refresh();
       });
     });
   const bulkDeploy = async () => {
     await Promise.all([...sel].map((id) => api.post(`/applications/${id}/deployments`)));
     message.success(t('deployStarted'));
     setSel(new Set());
-    bump();
+    refresh();
   };
   const bulkDelete = async () => {
     if (!(await confirmDestructive(t, { text: t('confirmDeleteManyBody', { count: sel.size }) }))) return;
     await Promise.all([...sel].map((id) => api.delete(`/applications/${id}`)));
     message.success(t('deleted'));
     setSel(new Set());
-    bump();
+    refresh();
   };
 
   return (
@@ -251,7 +249,7 @@ export function ApplicationsSector({
         open={createOpen}
         isAdmin={isAdmin}
         onClose={() => setCreateOpen(false)}
-        onCreated={bump}
+        onCreated={refresh}
       />
 
       <IconEditor
@@ -265,7 +263,7 @@ export function ApplicationsSector({
             message.success(t('iconSaved'));
           }
           setIconEdit(null);
-          bump();
+          refresh();
         }}
       />
     </section>

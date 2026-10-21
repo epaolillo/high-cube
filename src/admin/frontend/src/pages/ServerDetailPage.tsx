@@ -4,7 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import api from '../api/client';
@@ -21,36 +21,30 @@ const statusBadge: Record<string, 'success' | 'error' | 'warning' | 'default'> =
   removed: 'default',
 };
 
-type CpuCounters = { user?: number; nice?: number; system?: number; idle?: number };
-
-type GpuInfo = {
-  name?: string;
-  utilizationPercent?: number;
-  memoryUsedMb?: number;
-  memoryTotalMb?: number;
+type ServerSeries = {
+  cpu?: number[];
+  memory?: number[];
+  gpu?: number[];
 };
 
-type MetricPayload = {
+type ServerLatest = {
+  cpuPercent?: number;
+  memoryUsedBytes?: number;
+  memoryLimitBytes?: number;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
   load?: { '1'?: number; '5'?: number; '15'?: number };
-  memory?: { totalKb?: number; availableKb?: number };
-  cpu?: CpuCounters;
-  disk?: { totalBytes?: number; availableBytes?: number };
-  gpu?: { present?: boolean; gpus?: GpuInfo[] };
+  gpuPresent?: boolean;
+  gpuPercent?: number;
+  gpuMemoryUsedBytes?: number;
+  gpuMemoryTotalBytes?: number;
+  gpuCount?: number;
+  gpuName?: string;
 };
 
-// Averages GPU utilization and sums memory across all GPUs in a sample.
-function aggregateGpu(gpus: GpuInfo[]) {
-  const count = gpus.length;
-  const utilization = count > 0 ? gpus.reduce((sum, g) => sum + (g.utilizationPercent || 0), 0) / count : 0;
-  const memoryUsedMb = gpus.reduce((sum, g) => sum + (g.memoryUsedMb || 0), 0);
-  const memoryTotalMb = gpus.reduce((sum, g) => sum + (g.memoryTotalMb || 0), 0);
-  return { utilization, memoryUsedMb, memoryTotalMb };
-}
-
-type MetricRow = {
-  id: number;
-  collectedAt: string;
-  payload: MetricPayload;
+type ServerMetrics = {
+  series?: ServerSeries;
+  latest?: ServerLatest | null;
 };
 
 type Server = {
@@ -67,10 +61,6 @@ const cardStyle = {
   padding: 24,
 };
 
-function utcStamp(date: Date) {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
 function formatBytes(value: number) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let size = value;
@@ -85,15 +75,6 @@ function formatBytes(value: number) {
 function percent(used: number, total: number) {
   if (total <= 0) return 0;
   return Math.max(0, Math.min(100, (used / total) * 100));
-}
-
-function cpuPercent(previous: CpuCounters, current: CpuCounters) {
-  const busy = (sample: CpuCounters) => (sample.user || 0) + (sample.nice || 0) + (sample.system || 0);
-  const total = (sample: CpuCounters) => busy(sample) + (sample.idle || 0);
-  const deltaTotal = total(current) - total(previous);
-  const deltaBusy = busy(current) - busy(previous);
-  if (deltaTotal <= 0) return 0;
-  return Math.max(0, Math.min(100, (deltaBusy / deltaTotal) * 100));
 }
 
 function Sparkline({ points, color }: { points: number[]; color: string }) {
@@ -230,7 +211,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const id = propId != null ? String(propId) : params.id;
   const { t, i18n } = useTranslation();
   const [server, setServer] = useState<Server>();
-  const [rows, setRows] = useState<MetricRow[]>([]);
+  const [metrics, setMetrics] = useState<ServerMetrics>({});
   const [rotating, setRotating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
@@ -240,65 +221,38 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
     if (!id) return undefined;
     let stopped = false;
 
-    const load = async () => {
-      const to = new Date();
-      const from = new Date(to.getTime() - 5 * 60 * 1000);
-      const [serverRes, metricsRes] = await Promise.all([
-        api.get(`/servers/${id}`),
-        api.get(`/servers/${id}/metrics`, {
-          params: { from: utcStamp(from), to: utcStamp(to) },
-        }),
-      ]);
+    const load = async (silent: boolean) => {
+      const { data } = await api.get(`/servers/${id}/overview`, { suppressErrorToast: silent });
       if (stopped) return;
-      setServer(serverRes.data);
-      setRows(metricsRes.data.rows || []);
+      setServer(data.server);
+      setMetrics(data.metrics || {});
     };
 
-    load().catch(() => undefined);
+    load(false).catch(() => undefined);
     const timer = window.setInterval(() => {
-      load().catch(() => undefined);
-    }, 2000);
+      load(true).catch(() => undefined);
+    }, 3000);
     return () => {
       stopped = true;
       window.clearInterval(timer);
     };
   }, [id]);
 
-  const series = useMemo(() => {
-    const cpu: number[] = [];
-    const memory: number[] = [];
-    const gpu: number[] = [];
-    rows.forEach((row, index) => {
-      const previous = index > 0 ? rows[index - 1].payload.cpu : undefined;
-      if (previous && row.payload.cpu) {
-        cpu.push(cpuPercent(previous, row.payload.cpu));
-      }
-      const totalKb = row.payload.memory?.totalKb || 0;
-      const availableKb = row.payload.memory?.availableKb || 0;
-      if (totalKb > 0) {
-        memory.push(percent(totalKb - availableKb, totalKb));
-      }
-      const gpus = row.payload.gpu?.present ? row.payload.gpu.gpus ?? [] : [];
-      if (gpus.length > 0) {
-        gpu.push(aggregateGpu(gpus).utilization);
-      }
-    });
-    return { cpu, memory, gpu };
-  }, [rows]);
-
-  const latest = rows.length > 0 ? rows[rows.length - 1] : undefined;
-  const latestCpu = series.cpu.length > 0 ? series.cpu[series.cpu.length - 1] : undefined;
-  const memoryTotal = latest?.payload.memory?.totalKb || 0;
-  const memoryAvailable = latest?.payload.memory?.availableKb || 0;
-  const memoryUsed = Math.max(0, memoryTotal - memoryAvailable);
-  const diskTotal = latest?.payload.disk?.totalBytes || 0;
-  const diskAvailable = latest?.payload.disk?.availableBytes || 0;
-  const diskUsed = Math.max(0, diskTotal - diskAvailable);
-  const latestGpus = latest?.payload.gpu?.present ? latest.payload.gpu.gpus ?? [] : [];
-  const hasGpu = latestGpus.length > 0;
-  const gpuAggregate = aggregateGpu(latestGpus);
-  const gpuName = latestGpus.length === 1 ? latestGpus[0].name : undefined;
-  const gpuLabel = latestGpus.length > 1 ? `${t('gpu')} (${latestGpus.length})` : t('gpu');
+  const series = {
+    cpu: metrics.series?.cpu ?? [],
+    memory: metrics.series?.memory ?? [],
+    gpu: metrics.series?.gpu ?? [],
+  };
+  const latest = metrics.latest ?? undefined;
+  const latestCpu = latest?.cpuPercent;
+  const memoryTotal = latest?.memoryLimitBytes || 0;
+  const memoryUsed = latest?.memoryUsedBytes || 0;
+  const diskTotal = latest?.diskTotalBytes || 0;
+  const diskUsed = latest?.diskUsedBytes || 0;
+  const hasGpu = Boolean(latest?.gpuPresent);
+  const gpuName = latest?.gpuName;
+  const gpuCount = latest?.gpuCount || 0;
+  const gpuLabel = gpuCount > 1 ? `${t('gpu')} (${gpuCount})` : t('gpu');
 
   const regenerateToken = async () => {
     setRotating(true);
@@ -395,7 +349,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
         </div>
       </div>
 
-      {rows.length === 0 ? (
+      {!latest ? (
         <div style={{ ...cardStyle, marginBottom: 16 }}>
           <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
         </div>
@@ -421,20 +375,18 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
               {memoryTotal > 0 ? `${percent(memoryUsed, memoryTotal).toFixed(1)}%` : '—'}
             </Typography.Title>
             <Typography.Text style={{ color: '#425466' }}>
-              {memoryTotal > 0
-                ? `${formatBytes(memoryUsed * 1024)} / ${formatBytes(memoryTotal * 1024)}`
-                : '—'}
+              {memoryTotal > 0 ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : '—'}
             </Typography.Text>
             <Sparkline points={series.memory} color="#09825D" />
           </div>
           <div style={cardStyle}>
             <Typography.Text type="secondary">{t('load')}</Typography.Text>
             <Typography.Title level={3} style={{ margin: '8px 0' }}>
-              {(latest?.payload.load?.['1'] ?? 0).toFixed(2)}
+              {(latest?.load?.['1'] ?? 0).toFixed(2)}
             </Typography.Title>
             <Typography.Text style={{ color: '#425466' }}>
-              {(latest?.payload.load?.['1'] ?? 0).toFixed(2)} · {(latest?.payload.load?.['5'] ?? 0).toFixed(2)} ·{' '}
-              {(latest?.payload.load?.['15'] ?? 0).toFixed(2)}
+              {(latest?.load?.['1'] ?? 0).toFixed(2)} · {(latest?.load?.['5'] ?? 0).toFixed(2)} ·{' '}
+              {(latest?.load?.['15'] ?? 0).toFixed(2)}
             </Typography.Text>
           </div>
           <div style={cardStyle}>
@@ -452,13 +404,11 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
                 <Typography.Text type="secondary">{gpuLabel}</Typography.Text>
               </Tooltip>
               <Typography.Title level={3} style={{ margin: '8px 0' }}>
-                {`${gpuAggregate.utilization.toFixed(1)}%`}
+                {`${(latest?.gpuPercent || 0).toFixed(1)}%`}
               </Typography.Title>
               <Typography.Text style={{ color: '#425466' }}>
-                {gpuAggregate.memoryTotalMb > 0
-                  ? `${formatBytes(gpuAggregate.memoryUsedMb * 1024 * 1024)} / ${formatBytes(
-                      gpuAggregate.memoryTotalMb * 1024 * 1024,
-                    )}`
+                {(latest?.gpuMemoryTotalBytes || 0) > 0
+                  ? `${formatBytes(latest?.gpuMemoryUsedBytes || 0)} / ${formatBytes(latest?.gpuMemoryTotalBytes || 0)}`
                   : '—'}
               </Typography.Text>
               <Sparkline points={series.gpu} color="#F5A623" />

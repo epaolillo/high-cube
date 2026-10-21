@@ -78,8 +78,8 @@ std::string makeStreamId() {
 
 }  // namespace
 
-bool parseTerminalPath(const std::string& path, const std::string& prefix, int64_t* outId) {
-  const std::string suffix = "/terminal";
+bool parseTerminalPath(const std::string& path, const std::string& prefix, int64_t* outId,
+                       const std::string& suffix = "/terminal") {
   if (path.size() <= prefix.size() + suffix.size()) {
     return false;
   }
@@ -116,6 +116,10 @@ bool isReplicaTerminalPath(const std::string& path, int64_t* replicaId) {
   return parseTerminalPath(path, "/api/replicas/", replicaId);
 }
 
+bool isReplicaLogsPath(const std::string& path, int64_t* replicaId) {
+  return parseTerminalPath(path, "/api/replicas/", replicaId, "/logs");
+}
+
 AgentHub::AgentHub(net::io_context& ioc, Repositories& repos) : ioc_(ioc), repos_(repos) {}
 
 void AgentHub::setDeploymentService(DeploymentService* deployments) {
@@ -143,7 +147,11 @@ void AgentHub::onUpgrade(tcp::socket socket, http::request<http::string_body> re
   }
   int64_t replicaId = 0;
   if (isReplicaTerminalPath(path, &replicaId)) {
-    onReplicaTerminal(std::move(socket), std::move(req), replicaId);
+    onReplicaTerminal(std::move(socket), std::move(req), replicaId, false);
+    return;
+  }
+  if (isReplicaLogsPath(path, &replicaId)) {
+    onReplicaTerminal(std::move(socket), std::move(req), replicaId, true);
     return;
   }
   onAgentUpgrade(std::move(socket), std::move(req));
@@ -198,7 +206,7 @@ void AgentHub::onHostTerminal(tcp::socket socket, http::request<http::string_bod
 }
 
 void AgentHub::onReplicaTerminal(tcp::socket socket, http::request<http::string_body> req,
-                                 int64_t replicaId) {
+                                 int64_t replicaId, bool logs) {
   if (!auth_) {
     rejectSocket(socket, req, http::status::unauthorized, "Unauthorized");
     return;
@@ -239,7 +247,7 @@ void AgentHub::onReplicaTerminal(tcp::socket socket, http::request<http::string_
   const auto streamId = makeStreamId();
   auto relay = std::make_shared<HostTerminalRelay>(
       std::move(socket), *this, replica->serverId, streamId, cols, rows,
-      HostTerminalRelay::Kind::Container, replicaId);
+      logs ? HostTerminalRelay::Kind::Logs : HostTerminalRelay::Kind::Container, replicaId);
   relay->start(std::move(req));
 }
 
@@ -299,24 +307,34 @@ void AgentHub::onMessage(AgentSession::Pointer session, const ::highcube::Envelo
     }
     case ::highcube::TERMINAL_OUTPUT: {
       ::highcube::TerminalOutput msg;
-      if (!msg.ParseFromString(envelope.payload())) {
-        break;
+      if (msg.ParseFromString(envelope.payload())) {
+        forwardStreamOutput(msg.stream_id(), msg.data());
       }
-      std::function<void(const std::string&)> sink;
-      {
-        std::lock_guard lock(mutex_);
-        auto it = terminals_.find(msg.stream_id());
-        if (it != terminals_.end()) {
-          sink = it->second.onData;
-        }
-      }
-      if (sink) {
-        sink(msg.data());
+      break;
+    }
+    case ::highcube::LOG_CHUNK: {
+      ::highcube::LogChunk msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        forwardStreamOutput(msg.stream_id(), msg.data());
       }
       break;
     }
     default:
       break;
+  }
+}
+
+void AgentHub::forwardStreamOutput(const std::string& streamId, const std::string& data) {
+  std::function<void(const std::string&)> sink;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = terminals_.find(streamId);
+    if (it != terminals_.end()) {
+      sink = it->second.onData;
+    }
+  }
+  if (sink) {
+    sink(data);
   }
 }
 
@@ -337,6 +355,7 @@ void AgentHub::handleRegister(AgentSession::Pointer session, const ::highcube::R
   {
     std::lock_guard lock(mutex_);
     sessionsByServer_[server->id] = session;
+    containerRounds_.erase(server->id);
   }
   spdlog::info("agent registered: {} ({})", server->name, server->id);
   reconcileServer(server->id);
@@ -422,15 +441,18 @@ std::string AgentHub::startHostPortCheck(int port, const std::vector<int64_t>& s
 }
 
 void AgentHub::handleDbManageResult(const ::highcube::DbManageResult& msg) {
-  std::lock_guard lock(mutex_);
-  auto it = dbManage_.find(msg.correlation_id());
-  if (it == dbManage_.end()) {
-    return;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = dbManage_.find(msg.correlation_id());
+    if (it == dbManage_.end()) {
+      return;
+    }
+    it->second.done = true;
+    it->second.ok = msg.ok();
+    it->second.error = msg.error();
+    it->second.resultJson = msg.payload_json().empty() ? "{}" : msg.payload_json();
   }
-  it->second.done = true;
-  it->second.ok = msg.ok();
-  it->second.error = msg.error();
-  it->second.resultJson = msg.payload_json().empty() ? "{}" : msg.payload_json();
+  finishDbWaiter(msg.correlation_id(), 0);
 }
 
 void AgentHub::applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson) {
@@ -506,7 +528,7 @@ AgentHub::DbManagePoll AgentHub::pollDbManage(const std::string& requestId, int6
     }
     auto& entry = it->second;
     if (!entry.done &&
-        std::chrono::steady_clock::now() - entry.createdAt > std::chrono::seconds(30)) {
+        std::chrono::steady_clock::now() - entry.createdAt > std::chrono::seconds(60)) {
       entry.done = true;
       entry.ok = false;
       entry.error = "The database server did not respond in time";
@@ -543,6 +565,140 @@ AgentHub::DbManagePoll AgentHub::pollDbManage(const std::string& requestId, int6
     }
   }
   return poll;
+}
+
+namespace {
+
+constexpr auto kDbPollHold = std::chrono::seconds(12);
+
+Response dbManagePollResponse(const AgentHub::DbManagePoll& poll) {
+  nlohmann::json body = {{"status", poll.status}};
+  if (!poll.error.empty()) {
+    body["error"] = poll.error;
+  } else if (poll.status == "unknown") {
+    body["error"] = "The management request was not found";
+  }
+  if (poll.status == "ok") {
+    auto result = nlohmann::json::parse(poll.resultJson.empty() ? "{}" : poll.resultJson, nullptr, false);
+    body["result"] = result.is_discarded() ? nlohmann::json::object() : result;
+  }
+  return jsonResponse(http::status::ok, body);
+}
+
+bool parseDbManagePollPath(const std::string& path, int64_t& applicationId, std::string& requestId) {
+  const std::string prefix = "/api/applications/";
+  if (path.rfind(prefix, 0) != 0) {
+    return false;
+  }
+  const auto rest = path.substr(prefix.size());
+  const auto slash = rest.find('/');
+  if (slash == std::string::npos) {
+    return false;
+  }
+  const std::string tail = rest.substr(slash + 1);
+  const std::string marker = "db-manage/";
+  if (tail.rfind(marker, 0) != 0) {
+    return false;
+  }
+  requestId = tail.substr(marker.size());
+  if (requestId.empty() || requestId.find('/') != std::string::npos) {
+    return false;
+  }
+  try {
+    applicationId = std::stoll(rest.substr(0, slash));
+  } catch (const std::exception&) {
+    return false;
+  }
+  return applicationId > 0;
+}
+
+}  // namespace
+
+void AgentHub::finishDbWaiter(const std::string& requestId, std::uint64_t waiterId) {
+  std::function<void(Response)> reply;
+  int64_t applicationId = 0;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = dbWaiters_.find(requestId);
+    if (it == dbWaiters_.end()) {
+      return;
+    }
+    if (waiterId != 0 && it->second.id != waiterId) {
+      return;
+    }
+    reply = std::move(it->second.reply);
+    applicationId = it->second.applicationId;
+    if (it->second.timer) {
+      it->second.timer->cancel();
+    }
+    dbWaiters_.erase(it);
+  }
+  if (reply) {
+    reply(dbManagePollResponse(pollDbManage(requestId, applicationId)));
+  }
+}
+
+bool AgentHub::tryWaitDbManage(const http::request<http::string_body>& request,
+                               const std::function<void(Response)>& reply) {
+  if (request.method() != http::verb::get) {
+    return false;
+  }
+  int64_t applicationId = 0;
+  std::string requestId;
+  if (!parseDbManagePollPath(pathOnly(std::string(request.target())), applicationId, requestId)) {
+    return false;
+  }
+  if (!auth_) {
+    reply(errorResponse(http::status::internal_server_error, "Auth is not configured"));
+    return true;
+  }
+  const auto user = auth_->authenticate(std::string(request[http::field::authorization]));
+  if (!user) {
+    reply(errorResponse(http::status::unauthorized, "Unauthorized"));
+    return true;
+  }
+  const auto app = repos_.findApplicationById(applicationId);
+  if (!app) {
+    reply(errorResponse(http::status::conflict, "Application not found"));
+    return true;
+  }
+  if (!auth_->canAccessApplication(*user, *app)) {
+    reply(errorResponse(http::status::forbidden, "Forbidden"));
+    return true;
+  }
+
+  const auto current = pollDbManage(requestId, applicationId);
+  if (current.status != "pending") {
+    reply(dbManagePollResponse(current));
+    return true;
+  }
+
+  // A newer poll replaces the previous hold so that request can finish.
+  finishDbWaiter(requestId, 0);
+
+  DbWaiter waiter;
+  waiter.id = ++dbWaiterSeq_;
+  waiter.applicationId = applicationId;
+  waiter.reply = reply;
+  waiter.timer = std::make_shared<net::steady_timer>(ioc_, kDbPollHold);
+  const auto waiterId = waiter.id;
+  waiter.timer->async_wait([weak = weak_from_this(), requestId, waiterId](const boost::system::error_code& ec) {
+    if (ec) {
+      return;
+    }
+    if (auto self = weak.lock()) {
+      self->finishDbWaiter(requestId, waiterId);
+    }
+  });
+  {
+    std::lock_guard lock(mutex_);
+    dbWaiters_[requestId] = std::move(waiter);
+  }
+  // The agent may have answered while the waiter was being armed.
+  if (pollDbManage(requestId, applicationId).status != "pending") {
+    finishDbWaiter(requestId, waiterId);
+  }
+  return true;
 }
 
 AgentHub::PortCheckState AgentHub::pollHostPortCheck(const std::string& batchId) {
@@ -597,7 +753,17 @@ AgentHub::PortCheckState AgentHub::pollHostPortCheck(const std::string& batchId)
 
 void AgentHub::handleContainerMetrics(AgentSession::Pointer session,
                                       const ::highcube::ContainerMetrics& msg) {
-  if (session->serverId() == 0 || msg.replica_id() <= 0) {
+  if (session->serverId() == 0) {
+    return;
+  }
+  if (msg.replica_id() <= 0) {
+    // End of a complete round: every running container was reported just before this.
+    std::lock_guard lock(mutex_);
+    auto& rounds = containerRounds_[session->serverId()];
+    rounds.push_back(std::chrono::system_clock::now());
+    while (rounds.size() > 5) {
+      rounds.pop_front();
+    }
     return;
   }
   // A removed replica must not keep serving. The row is already gone, so tell this agent
@@ -637,7 +803,10 @@ void AgentHub::handleContainerMetrics(AgentSession::Pointer session,
   }
   // Refresh liveness so the supervisor can tell this container is still alive.
   repos_.touchReplicaSeen(replica->id, restartCount, now);
-  repos_.insertMetric(session->serverId(), msg.replica_id(), msg.payload_json(), now);
+  // An empty payload only proves the container runs; storing it would chart zeros.
+  if (payload.is_object() && !payload.empty()) {
+    repos_.insertMetric(session->serverId(), msg.replica_id(), msg.payload_json(), now);
+  }
 }
 
 void AgentHub::handleDeploymentLog(const ::highcube::DeploymentLog& msg) {
@@ -654,6 +823,7 @@ void AgentHub::onSessionClosed(AgentSession::Pointer session) {
       auto it = sessionsByServer_.find(session->serverId());
       if (it != sessionsByServer_.end() && it->second == session) {
         sessionsByServer_.erase(it);
+        containerRounds_.erase(session->serverId());
       }
     }
     for (auto it = terminals_.begin(); it != terminals_.end();) {
@@ -708,6 +878,19 @@ void AgentHub::openContainerTerminal(int64_t replicaId, const std::string& strea
   order.set_cols(cols);
   order.set_rows(rows);
   session->send(makeEnvelope(::highcube::OPEN_CONTAINER_TERMINAL, order));
+}
+
+void AgentHub::openReplicaLogs(int64_t replicaId, const std::string& streamId) {
+  auto replica = repos_.findReplicaById(replicaId);
+  auto session = replica ? sessionForServer(replica->serverId) : nullptr;
+  if (!replica || !session || replica->containerId.empty()) {
+    return;
+  }
+  ::highcube::SubscribeLogs order;
+  order.set_stream_id(streamId);
+  order.set_replica_id(replica->id);
+  order.set_container_id(replica->containerId);
+  session->send(makeEnvelope(::highcube::SUBSCRIBE_LOGS, order));
 }
 
 void AgentHub::writeHostTerminal(int64_t serverId, const std::string& streamId, const std::string& data) {
@@ -930,6 +1113,21 @@ void AgentHub::checkOfflineServers() {
       }
     }
   }
+}
+
+int AgentHub::containerRoundsSince(int64_t serverId, std::chrono::system_clock::time_point since) {
+  std::lock_guard lock(mutex_);
+  auto it = containerRounds_.find(serverId);
+  if (it == containerRounds_.end()) {
+    return 0;
+  }
+  int count = 0;
+  for (const auto& at : it->second) {
+    if (at > since) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 }  // namespace highcube::admin

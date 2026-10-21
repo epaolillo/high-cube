@@ -113,7 +113,25 @@ public:
   nlohmann::json rotateToken(int64_t id);
   void remove(int64_t id);
   nlohmann::json autocomplete(const std::string& q);
+  // Downsampled chart ({series, latest}) instead of every raw 1-second sample.
   nlohmann::json metrics(int64_t id, const std::string& from, const std::string& to);
+  // Latest resource readings for one server, from the two newest samples.
+  nlohmann::json snapshot(int64_t id);
+  // Server record plus the last five minutes of downsampled metrics.
+  nlohmann::json overview(int64_t id);
+
+private:
+  AppContext& ctx_;
+};
+
+// One poll for the whole dashboard, plus one poll per open detail drawer.
+class StateService {
+public:
+  explicit StateService(AppContext& ctx);
+  nlohmann::json dashboard(const ListQuery& servers, const ListQuery& applications,
+                           const ListQuery& users, const ListQuery& domains, const User& actor);
+  nlohmann::json applicationOverview(int64_t id, const User& actor);
+  nlohmann::json serverOverview(int64_t id);
 
 private:
   AppContext& ctx_;

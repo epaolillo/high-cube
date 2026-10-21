@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import Swal from 'sweetalert2';
 import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
+import { PAGE_SIZE, useDashboardState } from './DashboardState';
 import { Pager } from './Pager';
-import { PAGE_SIZE, usePagedResource } from './usePagedResource';
 
 type DomainRow = { id: number; hostname: string };
 type RedeployStatus = 'pending' | 'deploying' | 'success' | 'failed' | 'timeout' | 'error';
@@ -25,13 +25,14 @@ const REDEPLOY_COLOR: Record<RedeployStatus, string> = {
 
 export function SettingsSector() {
   const { t } = useTranslation();
+  const { data, refresh, setDomainsParams } = useDashboardState();
+  const rows = data.baseDomains.rows as DomainRow[];
+  const total = data.baseDomains.total;
+  const ttl = data.metricsTtlDays;
   const [page, setPage] = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const bump = () => setRefreshKey((n) => n + 1);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [domainOpen, setDomainOpen] = useState(false);
   const [domainForm] = Form.useForm();
-  const [ttl, setTtl] = useState<number | null>(null);
   const [metricsModal, setMetricsModal] = useState<{ ttl: number } | null>(null);
 
   // Redeploy-all progress state.
@@ -39,14 +40,9 @@ export function SettingsSector() {
   const [redeploying, setRedeploying] = useState(false);
   const [redeployItems, setRedeployItems] = useState<RedeployItem[]>([]);
 
-  const { rows, total } = usePagedResource<DomainRow>('/settings/base-domains', { page, refreshKey });
-
   useEffect(() => {
-    api
-      .get('/settings/metrics', { suppressErrorToast: true })
-      .then(({ data }) => setTtl(data.metricsTtlDays))
-      .catch(() => undefined);
-  }, [refreshKey]);
+    setDomainsParams(page);
+  }, [page, setDomainsParams]);
 
   useEffect(() => setSel(new Set()), [page]);
 
@@ -63,14 +59,14 @@ export function SettingsSector() {
     await api.post('/settings/base-domains', values);
     message.success(t('saved'));
     setDomainOpen(false);
-    bump();
+    refresh();
   };
   const removeDomain = (d: DomainRow) =>
     confirmDestructive(t, { text: d.hostname }).then((ok) => {
       if (!ok) return;
       return api.delete(`/settings/base-domains/${d.id}`).then(() => {
         message.success(t('deleted'));
-        bump();
+        refresh();
       });
     });
   const bulkDelete = async () => {
@@ -78,14 +74,14 @@ export function SettingsSector() {
     await Promise.all([...sel].map((id) => api.delete(`/settings/base-domains/${id}`)));
     message.success(t('deleted'));
     setSel(new Set());
-    bump();
+    refresh();
   };
   const submitMetrics = async () => {
     if (!metricsModal) return;
     await api.patch('/settings/metrics', { metricsTtlDays: metricsModal.ttl });
     message.success(t('saved'));
     setMetricsModal(null);
-    bump();
+    refresh();
   };
 
   // Sequential redeploy of every application, ported from the classic settings.

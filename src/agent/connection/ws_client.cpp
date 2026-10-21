@@ -8,6 +8,8 @@
 #include <openssl/err.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <sstream>
 #include <thread>
@@ -18,6 +20,9 @@ namespace bp = boost::process;
 
 namespace highcube::agent {
 namespace {
+
+// History sent when a log stream opens; the browser keeps at most 1 MB of it.
+constexpr unsigned kLogTailLines = 10000;
 
 // Container names are hc-<application_id>-<replica_id>.
 bool parseReplicaIdFromName(const std::string& name, int64_t& replicaId) {
@@ -315,6 +320,49 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
           cols, rows);
       break;
     }
+    case ::highcube::SUBSCRIBE_LOGS: {
+      ::highcube::SubscribeLogs order;
+      if (!order.ParseFromString(envelope.payload())) {
+        break;
+      }
+      const auto streamId = order.stream_id();
+      const auto replicaId = order.replica_id();
+      const auto containerId = order.container_id();
+      // The id ends up in a shell command line.
+      const bool validId =
+          !containerId.empty() && std::all_of(containerId.begin(), containerId.end(), [](char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.';
+          });
+      if (!validId) {
+        ::highcube::LogChunk out;
+        out.set_stream_id(streamId);
+        out.set_replica_id(replicaId);
+        out.set_data("Invalid container id.\n");
+        send(makeEnvelope(::highcube::LOG_CHUNK, out));
+        break;
+      }
+      auto session = std::make_shared<TerminalSession>();
+      auto previous = terminals_[streamId];
+      terminals_[streamId] = session;
+      if (previous) {
+        previous->close();
+      }
+      session->openLogs(
+          containerId, kLogTailLines,
+          [self = shared_from_this(), streamId, replicaId](const std::string& data) {
+            net::post(self->ioc_, [self, streamId, replicaId, data]() {
+              if (!self->connected_ || !self->terminals_.count(streamId)) {
+                return;
+              }
+              ::highcube::LogChunk out;
+              out.set_stream_id(streamId);
+              out.set_replica_id(replicaId);
+              out.set_data(data);
+              self->send(makeEnvelope(::highcube::LOG_CHUNK, out));
+            });
+          });
+      break;
+    }
     case ::highcube::TERMINAL_INPUT: {
       ::highcube::TerminalInput order;
       if (!order.ParseFromString(envelope.payload())) {
@@ -476,14 +524,25 @@ void WsClient::startContainerMetrics() {
     if (ec || !self->connected_) {
       return;
     }
-    self->reportContainerMetrics();
+    // A round shells out to Docker and can take many seconds; on this thread it would stall
+    // host metrics, heartbeats and every order from the admin. Skip a tick while one runs.
+    if (!self->containerReportRunning_.exchange(true)) {
+      std::thread([self]() {
+        try {
+          self->reportContainerMetrics();
+        } catch (const std::exception& ex) {
+          spdlog::warn("container metrics failed: {}", ex.what());
+        }
+        self->containerReportRunning_ = false;
+      }).detach();
+    }
     self->startContainerMetrics();
   });
 }
 
 void WsClient::reportContainerMetrics() {
   bp::ipstream out;
-  const int code = bp::system(bp::search_path("docker"), "ps", "--format", "{{.Names}} {{.ID}}",
+  const int code = bp::system(bp::search_path("docker"), "ps", "--format", "{{.Names}}",
                               bp::std_out > out, bp::std_err > bp::null);
   if (code != 0) {
     return;
@@ -491,24 +550,32 @@ void WsClient::reportContainerMetrics() {
   const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
+  std::vector<std::pair<std::string, int64_t>> replicas;
+  std::vector<std::string> names;
   std::string line;
   while (std::getline(out, line)) {
-    if (line.empty()) {
-      continue;
-    }
-    const auto space = line.find(' ');
-    const std::string name = space == std::string::npos ? line : line.substr(0, space);
-    const std::string containerId = space == std::string::npos ? name : line.substr(space + 1);
     int64_t replicaId = 0;
-    if (!parseReplicaIdFromName(name, replicaId)) {
+    if (!parseReplicaIdFromName(line, replicaId)) {
       continue;
     }
+    replicas.emplace_back(line, replicaId);
+    names.push_back(line);
+  }
+  const auto stats = runtime_.containerStatsByName(names);
+  for (const auto& [name, replicaId] : replicas) {
+    // Listed by docker ps means running, so it is reported even without a stats sample.
+    const auto it = stats.find(name);
     ::highcube::ContainerMetrics metrics;
     metrics.set_replica_id(replicaId);
-    metrics.set_payload_json(runtime_.containerStatsJson(containerId));
+    metrics.set_payload_json(it == stats.end() ? "{}" : it->second);
     metrics.set_collected_at_unix_ms(nowMs);
     send(makeEnvelope(::highcube::CONTAINER_METRICS, metrics));
   }
+  // replica_id 0 closes a complete round. The admin only treats a replica as gone when
+  // complete rounds keep arriving without it.
+  ::highcube::ContainerMetrics roundDone;
+  roundDone.set_collected_at_unix_ms(nowMs);
+  send(makeEnvelope(::highcube::CONTAINER_METRICS, roundDone));
 }
 
 void WsClient::scheduleReconnect() {

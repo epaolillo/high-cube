@@ -6,11 +6,29 @@ import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { MetricDisplay } from '../components/MetricDisplay';
+import { PAGE_SIZE, useDashboardState } from './DashboardState';
 import { Pager } from './Pager';
-import { fetchServerSnapshot, type ServerMetricSnapshot } from './serverMetrics';
-import { PAGE_SIZE, usePagedResource } from './usePagedResource';
 
-type ServerRow = { id: number; name: string; ip: string; status: string; lastSeenAt?: string };
+type ServerMetrics = {
+  cpuPercent?: number;
+  memoryUsedBytes?: number;
+  memoryLimitBytes?: number;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
+  gpuPresent?: boolean;
+  gpuPercent?: number;
+  gpuMemoryUsedBytes?: number;
+  gpuMemoryTotalBytes?: number;
+};
+
+type ServerRow = {
+  id: number;
+  name: string;
+  ip: string;
+  status: string;
+  lastSeenAt?: string;
+  metrics?: ServerMetrics;
+};
 
 function showAgentToken(t: (k: string) => string, token: string) {
   Modal.info({
@@ -29,43 +47,18 @@ function showAgentToken(t: (k: string) => string, token: string) {
 
 export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
   const { t } = useTranslation();
+  const { data, refresh, setServersParams } = useDashboardState();
+  const rows = data.servers.rows as ServerRow[];
+  const total = data.servers.total;
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const bump = () => setRefreshKey((n) => n + 1);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ id?: number } | null>(null);
   const [form] = Form.useForm();
 
-  const { rows, total } = usePagedResource<ServerRow>('/servers', {
-    page,
-    params: { q: q || undefined },
-    refreshKey,
-  });
-
-  // Live resource snapshots for the servers on the current page.
-  const [metrics, setMetrics] = useState<Record<number, ServerMetricSnapshot>>({});
-  const idsKey = rows.map((r) => r.id).join(',');
   useEffect(() => {
-    if (!rows.length) {
-      setMetrics({});
-      return undefined;
-    }
-    let stopped = false;
-    const load = async () => {
-      const entries = await Promise.all(
-        rows.map(async (r) => [r.id, await fetchServerSnapshot(r.id)] as const),
-      );
-      if (!stopped) setMetrics(Object.fromEntries(entries));
-    };
-    load();
-    const timer = window.setInterval(load, 4000);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey]);
+    setServersParams(page, q);
+  }, [page, q, setServersParams]);
 
   // Selection resets whenever the visible set changes.
   useEffect(() => setSel(new Set()), [page, q]);
@@ -92,11 +85,11 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
       await api.patch(`/servers/${modal.id}`, values);
       message.success(t('saved'));
       setModal(null);
-      bump();
+      refresh();
     } else {
       const { data } = await api.post('/servers', values);
       setModal(null);
-      bump();
+      refresh();
       showAgentToken(t, data.agentToken);
     }
   };
@@ -111,7 +104,7 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
       if (!ok) return;
       return api.delete(`/servers/${s.id}`).then(() => {
         message.success(t('serverRemoved'));
-        bump();
+        refresh();
       });
     });
   const bulkDelete = async () => {
@@ -119,7 +112,7 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
     await Promise.all([...sel].map((id) => api.delete(`/servers/${id}`)));
     message.success(t('serverRemoved'));
     setSel(new Set());
-    bump();
+    refresh();
   };
 
   return (
@@ -206,15 +199,15 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
             </div>
             <div className="hc-row__metric">
               <MetricDisplay
-                cpuPercent={metrics[s.id]?.cpuPercent}
-                memoryUsedBytes={metrics[s.id]?.memoryUsedBytes}
-                memoryLimitBytes={metrics[s.id]?.memoryLimitBytes}
-                diskUsedBytes={metrics[s.id]?.diskUsedBytes}
-                diskTotalBytes={metrics[s.id]?.diskTotalBytes}
-                gpuPresent={metrics[s.id]?.gpuPresent}
-                gpuPercent={metrics[s.id]?.gpuPercent}
-                gpuMemoryUsedBytes={metrics[s.id]?.gpuMemoryUsedBytes}
-                gpuMemoryTotalBytes={metrics[s.id]?.gpuMemoryTotalBytes}
+                cpuPercent={s.metrics?.cpuPercent}
+                memoryUsedBytes={s.metrics?.memoryUsedBytes}
+                memoryLimitBytes={s.metrics?.memoryLimitBytes}
+                diskUsedBytes={s.metrics?.diskUsedBytes}
+                diskTotalBytes={s.metrics?.diskTotalBytes}
+                gpuPresent={s.metrics?.gpuPresent}
+                gpuPercent={s.metrics?.gpuPercent}
+                gpuMemoryUsedBytes={s.metrics?.gpuMemoryUsedBytes}
+                gpuMemoryTotalBytes={s.metrics?.gpuMemoryTotalBytes}
                 status={s.status === 'online' ? 'running' : 'stopped'}
               />
             </div>

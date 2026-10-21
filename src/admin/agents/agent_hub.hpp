@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -26,6 +27,7 @@ class GithubAppService;
 
 bool isHostTerminalPath(const std::string& path, int64_t* serverId = nullptr);
 bool isReplicaTerminalPath(const std::string& path, int64_t* replicaId = nullptr);
+bool isReplicaLogsPath(const std::string& path, int64_t* replicaId = nullptr);
 
 class AgentHub : public std::enable_shared_from_this<AgentHub> {
 public:
@@ -45,6 +47,8 @@ public:
                         std::uint32_t rows);
   void openContainerTerminal(int64_t replicaId, const std::string& streamId, std::uint32_t cols,
                              std::uint32_t rows);
+  // Read-only stream of the container output; shares the terminal plumbing and CLOSE_STREAM.
+  void openReplicaLogs(int64_t replicaId, const std::string& streamId);
   void closeHostTerminal(int64_t serverId, const std::string& streamId);
   void writeHostTerminal(int64_t serverId, const std::string& streamId, const std::string& data);
   void resizeHostTerminal(int64_t serverId, const std::string& streamId, std::uint32_t cols,
@@ -60,6 +64,9 @@ public:
   void renameVolumeOnServers(const std::string& fromName, const std::string& toName);
   void disconnectServer(int64_t serverId);
   void checkOfflineServers();
+  // Complete container-metrics rounds the server's current session finished after `since`.
+  // A replica is only proven gone when such rounds keep arriving without it.
+  int containerRoundsSince(int64_t serverId, std::chrono::system_clock::time_point since);
 
   // Host port availability check via an async admin<->agent round-trip.
   enum class PortCheckState { Pending, Available, Unavailable, Unknown };
@@ -84,6 +91,10 @@ public:
   std::string startDbManage(int64_t serverId, int64_t applicationId, const std::string& containerId,
                             const std::string& payloadJson, const DbManageEffect& effect);
   DbManagePoll pollDbManage(const std::string& requestId, int64_t applicationId);
+  // Holds one GET /db-manage/:requestId until the agent answers, or for a short
+  // slice of that wait. Avoids the client polling several times a second.
+  bool tryWaitDbManage(const http::request<http::string_body>& request,
+                       const std::function<void(http::response<http::string_body>)>& reply);
 
 private:
   void onMessage(AgentSession::Pointer session, const ::highcube::Envelope& envelope);
@@ -95,10 +106,13 @@ private:
   void handleHostPortResult(const ::highcube::HostPortResult& msg);
   void handleDbManageResult(const ::highcube::DbManageResult& msg);
   void applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson);
+  void finishDbWaiter(const std::string& requestId, std::uint64_t waiterId);
   void handleDeploymentLog(const ::highcube::DeploymentLog& msg);
   void onAgentUpgrade(tcp::socket socket, http::request<http::string_body> req);
   void onHostTerminal(tcp::socket socket, http::request<http::string_body> req, int64_t serverId);
-  void onReplicaTerminal(tcp::socket socket, http::request<http::string_body> req, int64_t replicaId);
+  void onReplicaTerminal(tcp::socket socket, http::request<http::string_body> req, int64_t replicaId,
+                         bool logs);
+  void forwardStreamOutput(const std::string& streamId, const std::string& data);
   void onSessionClosed(AgentSession::Pointer session);
   AgentSession::Pointer sessionForServer(int64_t serverId);
 
@@ -117,6 +131,8 @@ private:
   std::mutex mutex_;
   std::unordered_map<int64_t, AgentSession::Pointer> sessionsByServer_;
   std::unordered_map<std::string, TerminalLink> terminals_;
+  // serverId -> when the latest complete container-metrics rounds arrived.
+  std::unordered_map<int64_t, std::deque<std::chrono::system_clock::time_point>> containerRounds_;
 
   struct PortCheckEntry {
     bool done = false;
@@ -140,6 +156,15 @@ private:
   };
   std::unordered_map<std::string, DbManageEntry> dbManage_;
   std::atomic<std::uint64_t> dbManageSeq_{0};
+
+  struct DbWaiter {
+    std::uint64_t id = 0;
+    int64_t applicationId = 0;
+    std::function<void(http::response<http::string_body>)> reply;
+    std::shared_ptr<net::steady_timer> timer;
+  };
+  std::unordered_map<std::string, DbWaiter> dbWaiters_;
+  std::atomic<std::uint64_t> dbWaiterSeq_{0};
 };
 
 }  // namespace highcube::admin

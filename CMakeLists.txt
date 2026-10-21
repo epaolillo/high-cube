@@ -60,6 +60,7 @@ set(ADMIN_SOURCES
   src/admin/services/activity_service.cpp
   src/admin/services/settings_service.cpp
   src/admin/services/server_service.cpp
+  src/admin/services/state_service.cpp
   src/admin/services/application_service.cpp
   src/admin/services/db_admin_service.cpp
   src/admin/services/deployment_service.cpp

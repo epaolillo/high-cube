@@ -183,6 +183,58 @@ int64_t directorySizeBytes(const std::string& path) {
   }
 }
 
+// cpuPart is docker stats CPUPerc ("1.23%"), memPart its MemUsage ("12MiB / 1GiB").
+std::string containerStatsPayload(std::string cpuPart, const std::string& memPart,
+                                  int64_t diskBytes, int restartCount,
+                                  const std::string& mountsRaw) {
+  while (!cpuPart.empty() && cpuPart.back() == '%') {
+    cpuPart.pop_back();
+  }
+  const auto slash = memPart.find('/');
+  const std::string usedPart = slash == std::string::npos ? memPart : memPart.substr(0, slash);
+  const std::string totalPart = slash == std::string::npos ? "" : memPart.substr(slash + 1);
+
+  nlohmann::json volumes = nlohmann::json::array();
+  const auto mounts = nlohmann::json::parse(mountsRaw, nullptr, false);
+  if (mounts.is_array()) {
+    const auto now = std::chrono::steady_clock::now();
+    for (const auto& mount : mounts) {
+      if (!mount.is_object() || mount.value("Type", "") != "volume") {
+        continue;
+      }
+      const std::string volName = mount.value("Name", "");
+      const std::string hostPath = mount.value("Source", "");
+      nlohmann::json item = {{"name", volName},
+                             {"mountPath", mount.value("Destination", "")},
+                             {"dockerName", volName},
+                             {"hostPath", hostPath},
+                             {"sizeBytes", nullptr}};
+      if (!hostPath.empty()) {
+        std::lock_guard lock(volumeCacheMutex);
+        auto it = volumeCache.find(volName);
+        if (it != volumeCache.end() && it->second.expiresAt > now) {
+          item = it->second.payload;
+          item["mountPath"] = mount.value("Destination", "");
+        } else {
+          item["sizeBytes"] = directorySizeBytes(hostPath);
+          volumeCache[volName] = VolumeCacheEntry{item, now + std::chrono::minutes(5)};
+        }
+      }
+      volumes.push_back(item);
+    }
+  }
+
+  nlohmann::json payload = {
+      {"cpuPercent", parsePercent(cpuPart)},
+      {"memoryUsedBytes", parseByteSize(usedPart)},
+      {"memoryLimitBytes", parseByteSize(totalPart)},
+      {"diskUsedBytes", diskBytes},
+      {"restartCount", restartCount},
+      {"volumes", volumes},
+  };
+  return payload.dump();
+}
+
 }  // namespace
 
 DockerRuntime::DockerRuntime(std::string dataDir) : dataDir_(std::move(dataDir)) {}
@@ -279,11 +331,12 @@ void DockerRuntime::removeContainer(const std::string& container) const {
 
 std::string DockerRuntime::docker(const std::vector<std::string>& args) const {
   bp::ipstream out;
-  bp::ipstream err;
-  bp::child c(bp::search_path("docker"), bp::args(args), bp::std_out > out, bp::std_err > err);
-  c.wait();
+  bp::child c(bp::search_path("docker"), bp::args(args), bp::std_out > out,
+              bp::std_err > bp::null);
+  // Drain before waiting: output larger than the pipe buffer would block docker forever.
   std::stringstream ss;
   ss << out.rdbuf();
+  c.wait();
   return ss.str();
 }
 
@@ -802,91 +855,63 @@ std::string DockerRuntime::containerStatsJson(const std::string& containerId) {
   if (containerId.empty()) {
     return "{}";
   }
-  auto raw = docker({"stats", "--no-stream", "--format",
-                     "{{.CPUPerc}}|{{.MemUsage}}|{{.Name}}", containerId});
-  while (!raw.empty() && (raw.back() == '\n' || raw.back() == '\r')) {
-    raw.pop_back();
-  }
-  const auto first = raw.find('|');
-  const auto second = first == std::string::npos ? std::string::npos : raw.find('|', first + 1);
-  std::string cpuPart = raw;
-  std::string memPart;
-  if (first != std::string::npos) {
-    cpuPart = raw.substr(0, first);
-    memPart = second == std::string::npos ? raw.substr(first + 1)
-                                          : raw.substr(first + 1, second - first - 1);
-  }
-  while (!cpuPart.empty() && cpuPart.back() == '%') {
-    cpuPart.pop_back();
-  }
-  const auto slash = memPart.find('/');
-  const std::string usedPart = slash == std::string::npos ? memPart : memPart.substr(0, slash);
-  const std::string totalPart = slash == std::string::npos ? "" : memPart.substr(slash + 1);
+  const auto payloads = containerStatsByName({containerId});
+  return payloads.empty() ? "{}" : payloads.begin()->second;
+}
 
-  int64_t diskBytes = 0;
-  int restartCount = 0;
-  auto sizeRaw =
-      docker({"inspect", "--size", "--format", "{{.SizeRw}}|{{.RestartCount}}", containerId});
-  while (!sizeRaw.empty() && (sizeRaw.back() == '\n' || sizeRaw.back() == '\r')) {
-    sizeRaw.pop_back();
+std::unordered_map<std::string, std::string> DockerRuntime::containerStatsByName(
+    const std::vector<std::string>& containers) {
+  std::unordered_map<std::string, std::string> payloads;
+  if (containers.empty()) {
+    return payloads;
   }
-  const auto sizeSep = sizeRaw.find('|');
-  if (sizeSep != std::string::npos) {
+  // docker stats --no-stream samples for about two seconds per call. Without arguments it
+  // samples every running container in that single window, and a container that exits
+  // meanwhile cannot make the whole call fail.
+  std::unordered_map<std::string, std::pair<std::string, std::string>> usage;
+  for (const auto& line : splitLines(docker(
+           {"stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}"}))) {
+    const auto first = line.find('|');
+    const auto second = first == std::string::npos ? std::string::npos : line.find('|', first + 1);
+    if (second == std::string::npos) {
+      continue;
+    }
+    usage[line.substr(0, first)] = {line.substr(first + 1, second - first - 1),
+                                    line.substr(second + 1)};
+  }
+
+  std::vector<std::string> args{"inspect", "--size", "--format",
+                                "{{.Name}}|{{.SizeRw}}|{{.RestartCount}}|{{json .Mounts}}"};
+  args.insert(args.end(), containers.begin(), containers.end());
+  for (const auto& line : splitLines(docker(args))) {
+    const auto first = line.find('|');
+    const auto second = first == std::string::npos ? std::string::npos : line.find('|', first + 1);
+    const auto third = second == std::string::npos ? std::string::npos : line.find('|', second + 1);
+    if (third == std::string::npos) {
+      continue;
+    }
+    std::string name = line.substr(0, first);
+    if (!name.empty() && name.front() == '/') {
+      name.erase(name.begin());
+    }
+    int64_t diskBytes = 0;
+    int restartCount = 0;
     try {
-      diskBytes = std::stoll(sizeRaw.substr(0, sizeSep));
+      diskBytes = std::stoll(line.substr(first + 1, second - first - 1));
     } catch (const std::exception&) {
       diskBytes = 0;
     }
     try {
-      restartCount = std::stoi(sizeRaw.substr(sizeSep + 1));
+      restartCount = std::stoi(line.substr(second + 1, third - second - 1));
     } catch (const std::exception&) {
       restartCount = 0;
     }
+    const auto it = usage.find(name);
+    payloads[name] = containerStatsPayload(it == usage.end() ? "" : it->second.first,
+                                           it == usage.end() ? "" : it->second.second,
+                                           diskBytes, restartCount, line.substr(third + 1));
   }
-
-  nlohmann::json volumes = nlohmann::json::array();
-  auto mountsRaw = docker({"inspect", "--format", "{{json .Mounts}}", containerId});
-  while (!mountsRaw.empty() && (mountsRaw.back() == '\n' || mountsRaw.back() == '\r')) {
-    mountsRaw.pop_back();
-  }
-  const auto mounts = nlohmann::json::parse(mountsRaw, nullptr, false);
-  if (mounts.is_array()) {
-    const auto now = std::chrono::steady_clock::now();
-    for (const auto& mount : mounts) {
-      if (!mount.is_object() || mount.value("Type", "") != "volume") {
-        continue;
-      }
-      const std::string volName = mount.value("Name", "");
-      const std::string hostPath = mount.value("Source", "");
-      nlohmann::json item = {{"name", volName},
-                             {"mountPath", mount.value("Destination", "")},
-                             {"dockerName", volName},
-                             {"hostPath", hostPath},
-                             {"sizeBytes", nullptr}};
-      if (!hostPath.empty()) {
-        std::lock_guard lock(volumeCacheMutex);
-        auto it = volumeCache.find(volName);
-        if (it != volumeCache.end() && it->second.expiresAt > now) {
-          item = it->second.payload;
-          item["mountPath"] = mount.value("Destination", "");
-        } else {
-          item["sizeBytes"] = directorySizeBytes(hostPath);
-          volumeCache[volName] = VolumeCacheEntry{item, now + std::chrono::minutes(5)};
-        }
-      }
-      volumes.push_back(item);
-    }
-  }
-
-  nlohmann::json payload = {
-      {"cpuPercent", parsePercent(cpuPart)},
-      {"memoryUsedBytes", parseByteSize(usedPart)},
-      {"memoryLimitBytes", parseByteSize(totalPart)},
-      {"diskUsedBytes", diskBytes},
-      {"restartCount", restartCount},
-      {"volumes", volumes},
-  };
-  return payload.dump();
+  return payloads;
 }
 
 bool DockerRuntime::containerHasShell(const std::string& containerId) {

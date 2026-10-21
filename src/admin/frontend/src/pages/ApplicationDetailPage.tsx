@@ -30,6 +30,7 @@ import api from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { confirmRedeploy } from '../components/confirmRedeploy';
 import { confirmDestructive } from '../components/confirmDestructive';
+import { ContainerLogs } from '../components/ContainerLogs';
 import { DatabaseManagementTab } from '../components/DatabaseManagementTab';
 import { DockerfileExposeHint } from '../components/DockerfileExposeHint';
 import { HostnamePills } from '../components/HostnamePills';
@@ -157,10 +158,6 @@ type LatestMetrics = {
   collectedAt?: string;
 };
 
-function utcStamp(date: Date) {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
 function formatBytes(value: number) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let size = value;
@@ -222,14 +219,24 @@ function aggregateStatus(replicas: Replica[]) {
 function ContainerTerminal({
   replicaId,
   enabled,
+  active,
   onModeChange,
 }: {
   replicaId: number | undefined;
   enabled: boolean;
+  // False while the tab is hidden; xterm cannot measure a hidden container.
+  active: boolean;
   onModeChange: (mode: TerminalMode | undefined) => void;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const activateRef = useRef<() => void>();
+
+  useEffect(() => {
+    if (active) activateRef.current?.();
+  }, [active]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -259,10 +266,15 @@ function ContainerTerminal({
       }
     };
     const fitTerminal = () => {
+      if (!activeRef.current) return;
       place();
       fit.fit();
     };
     fitTerminal();
+    activateRef.current = () => {
+      fitTerminal();
+      term.focus();
+    };
 
     let disposed = false;
     let transport: TerminalTransport | undefined;
@@ -310,6 +322,7 @@ function ContainerTerminal({
 
     return () => {
       disposed = true;
+      activateRef.current = undefined;
       connecting.abort();
       transport?.close();
       onModeChange(undefined);
@@ -563,30 +576,25 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   const hostnameDirty = useRef(false);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
   const [selectedReplicaId, setSelectedReplicaId] = useState<number>();
+  const [consoleTab, setConsoleTab] = useState<'logs' | 'shell'>('logs');
+  // Replica whose shell the user opened. It stays alive while the logs tab is shown,
+  // but a shell is never opened in the background for a replica the user did not pick.
+  const [shellReplicaId, setShellReplicaId] = useState<number>();
   const [form] = Form.useForm();
   const [volumeForm] = Form.useForm();
   const [volumeModal, setVolumeModal] = useState<null | { mode: 'create' | 'edit'; volume?: VolumeRow }>(
     null,
   );
 
-  const load = async () => {
+  const load = async (silent = false) => {
     if (!id) return;
-    const to = new Date();
-    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const [appRes, depRes, repRes, volRes, metricsRes] = await Promise.all([
-      api.get(`/applications/${id}`),
-      api.get(`/applications/${id}/deployments`, { params: { page: 1, pageSize: 10 } }),
-      api.get(`/applications/${id}/replicas`, { params: { page: 1, pageSize: 100 } }),
-      api.get(`/applications/${id}/volumes`),
-      api.get(`/applications/${id}/metrics`, {
-        params: { from: utcStamp(from), to: utcStamp(to) },
-      }),
-    ]);
-    setApp(appRes.data);
-    setDomains(appRes.data.availableBaseDomains || []);
+    const { data } = await api.get(`/applications/${id}/overview`, { suppressErrorToast: silent });
+    const appData = data.application || {};
+    setApp(appData);
+    setDomains(appData.availableBaseDomains || []);
     if (!hostnameDirty.current) {
-      const rows: HostnameRow[] = Array.isArray(appRes.data.hostnames)
-        ? appRes.data.hostnames.map(
+      const rows: HostnameRow[] = Array.isArray(appData.hostnames)
+        ? appData.hostnames.map(
             (row: {
               subdomain: string;
               baseDomainId: number;
@@ -599,13 +607,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               hostname: row.hostname,
             }),
           )
-        : appRes.data.hostname
+        : appData.hostname
           ? [
               {
-                subdomain: String(appRes.data.hostname).split('.')[0] || '',
-                baseDomainId: (appRes.data.availableBaseDomains || [])[0]?.id || 0,
-                tlsStatus: appRes.data.tlsStatus,
-                hostname: appRes.data.hostname,
+                subdomain: String(appData.hostname).split('.')[0] || '',
+                baseDomainId: (appData.availableBaseDomains || [])[0]?.id || 0,
+                tlsStatus: appData.tlsStatus,
+                hostname: appData.hostname,
               },
             ]
           : [];
@@ -613,8 +621,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     }
     if (!basicAuthDirty.current) {
       setBasicAuthRows(
-        Array.isArray(appRes.data.basicAuthUsers)
-          ? appRes.data.basicAuthUsers.map((row: { username: string }) => ({
+        Array.isArray(appData.basicAuthUsers)
+          ? appData.basicAuthUsers.map((row: { username: string }) => ({
               username: row.username,
               password: '',
               saved: true,
@@ -622,8 +630,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           : [],
       );
     }
-    const nextMappings: PortMapping[] = Array.isArray(appRes.data.portMappings)
-      ? appRes.data.portMappings.map((m: PortMapping) => ({
+    const nextMappings: PortMapping[] = Array.isArray(appData.portMappings)
+      ? appData.portMappings.map((m: PortMapping) => ({
           containerPort: Number(m.containerPort) || 0,
           hostPort: Number(m.hostPort) || 0,
         }))
@@ -639,21 +647,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       serverMappings.current = nextKey;
       return nextMappings;
     });
-    setDeployments(depRes.data.rows || []);
-    setReplicas(repRes.data.rows || []);
-    setVolumes(volRes.data.rows || []);
-    setSeries(metricsRes.data.series || []);
-    setLatest(metricsRes.data.latest || null);
-    // Crash traceability is best-effort so the page still loads on older servers.
-    try {
-      const incRes = await api.get(`/applications/${id}/incidents`, {
-        params: { page: 1, pageSize: 100 },
-      });
-      setIncidents(incRes.data.rows || []);
-    } catch {
-      setIncidents([]);
-    }
-    const rows: Replica[] = repRes.data.rows || [];
+    setDeployments(data.deployments?.rows || []);
+    setReplicas(data.replicas?.rows || []);
+    setVolumes(data.volumes?.rows || []);
+    setSeries(data.metrics?.series || []);
+    setLatest(data.metrics?.latest || null);
+    setIncidents(data.incidents?.rows || []);
+    const rows: Replica[] = data.replicas?.rows || [];
     const preferred =
       rows.find((r) => r.status === 'running' || r.status === 'healthy') || rows[0];
     setSelectedReplicaId((current) => {
@@ -681,9 +681,11 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   useEffect(() => {
     load().catch(() => undefined);
     const timer = window.setInterval(() => {
-      load().catch(() => undefined);
+      load(true).catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
+    // load closes over the latest id; the interval only restarts when the app changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -754,6 +756,12 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       (selectedReplica.status === 'running' || selectedReplica.status === 'healthy') &&
       selectedReplica.serverStatus === 'online',
   );
+  // Starting or unhealthy containers still have output worth reading.
+  const logsEnabled = Boolean(selectedReplica?.containerId && selectedReplica.serverStatus === 'online');
+
+  useEffect(() => {
+    if (consoleTab === 'shell') setShellReplicaId(selectedReplicaId);
+  }, [consoleTab, selectedReplicaId]);
 
   const redeploy = async (noCache = false) => {
     if (!id) return;
@@ -1493,15 +1501,18 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
             {t('hostPortExplicitHint')}
           </Typography.Text>
           {!isAdmin && <Typography.Text type="secondary">{t('portExposeAdminOnly')}</Typography.Text>}
-          <DockerfileExposeHint
-            source={app.source}
-            githubAppId={app.githubAppId}
-            repo={app.repoFullName}
-            repoUrl={app.repoUrl}
-            branch={app.branch}
-            baseDirectory={app.baseDirectory}
-            dockerfilePath={app.dockerfilePath}
-          />
+          {/* The Dockerfile hint relies on an admin-only endpoint, so only admins fetch it. */}
+          {isAdmin && (
+            <DockerfileExposeHint
+              source={app.source}
+              githubAppId={app.githubAppId}
+              repo={app.repoFullName}
+              repoUrl={app.repoUrl}
+              branch={app.branch}
+              baseDirectory={app.baseDirectory}
+              dockerfilePath={app.dockerfilePath}
+            />
+          )}
         </Space>
       </div>
 
@@ -1688,7 +1699,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               title: t('actions'),
               render: (_: unknown, row: Replica) => (
                 <Space>
-                  <Button size="small" onClick={() => api.post(`/replicas/${row.id}/restart`).then(load)}>
+                  <Button size="small" onClick={() => api.post(`/replicas/${row.id}/restart`).then(() => load())}>
                     {t('restart')}
                   </Button>
                   <Button
@@ -1746,45 +1757,58 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       </div>
 
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-        <div
-          style={{
-            padding: '16px 24px',
-            borderBottom: '1px solid #E3E8EE',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <Typography.Text strong>{t('containerTerminal')}</Typography.Text>
-          <Space>
-            {replicas.length > 1 && (
-              <Select
-                style={{ minWidth: 180 }}
-                value={selectedReplicaId}
-                onChange={setSelectedReplicaId}
-                options={replicas.map((r) => ({
-                  value: r.id,
-                  label: `${r.serverName || r.serverId} · ${r.status}`,
-                }))}
-              />
-            )}
-            {terminalMode === 'polling' && (
-              <Tooltip title={t('terminalPollingHint')}>
-                <Tag color="gold" style={{ marginInlineEnd: 0 }}>
-                  {t('terminalPolling')}
-                </Tag>
-              </Tooltip>
-            )}
-          </Space>
-        </div>
-        <ContainerTerminal
-          key={selectedReplicaId}
-          replicaId={selectedReplicaId}
-          enabled={shellEnabled}
-          onModeChange={setTerminalMode}
+        <Tabs
+          activeKey={consoleTab}
+          onChange={(key) => setConsoleTab(key as 'logs' | 'shell')}
+          tabBarStyle={{ margin: 0, padding: '0 24px' }}
+          items={[
+            { key: 'logs', label: t('containerLogs') },
+            { key: 'shell', label: t('containerTerminal') },
+          ]}
+          tabBarExtraContent={
+            <Space>
+              {replicas.length > 1 && (
+                <Select
+                  style={{ minWidth: 180 }}
+                  value={selectedReplicaId}
+                  onChange={setSelectedReplicaId}
+                  options={replicas.map((r) => ({
+                    value: r.id,
+                    label: `${r.serverName || r.serverId} · ${r.status}`,
+                  }))}
+                />
+              )}
+              {consoleTab === 'shell' && terminalMode === 'polling' && (
+                <Tooltip title={t('terminalPollingHint')}>
+                  <Tag color="gold" style={{ marginInlineEnd: 0 }}>
+                    {t('terminalPolling')}
+                  </Tag>
+                </Tooltip>
+              )}
+            </Space>
+          }
         />
+        {/* Both panes stay mounted while hidden so the log buffer and an open shell survive tab switches. */}
+        <div style={{ display: consoleTab === 'logs' ? 'block' : 'none' }}>
+          <ContainerLogs
+            key={selectedReplicaId}
+            replicaId={selectedReplicaId}
+            enabled={logsEnabled}
+            active={consoleTab === 'logs'}
+          />
+        </div>
+        {(consoleTab === 'shell' ||
+          (shellReplicaId !== undefined && shellReplicaId === selectedReplicaId)) && (
+          <div style={{ display: consoleTab === 'shell' ? 'block' : 'none' }}>
+            <ContainerTerminal
+              key={selectedReplicaId}
+              replicaId={selectedReplicaId}
+              enabled={shellEnabled}
+              active={consoleTab === 'shell'}
+              onModeChange={setTerminalMode}
+            />
+          </div>
+        )}
       </div>
     </>
   );

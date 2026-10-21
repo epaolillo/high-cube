@@ -129,6 +129,9 @@ public:
                     const std::string& payloadJson, const std::string& collectedAt);
   std::vector<MetricRow> listServerMetrics(int64_t serverId, const std::string& from,
                                            const std::string& to);
+  // Newest host samples only. Avoids scanning a multi-minute window when the
+  // caller just needs the current snapshot.
+  std::vector<MetricRow> listRecentServerMetrics(int64_t serverId, int limit);
   std::vector<MetricRow> listReplicaMetrics(int64_t replicaId, const std::string& from,
                                             const std::string& to);
   int64_t deleteMetricsOlderThan(const std::string& cutoffIso);

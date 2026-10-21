@@ -4,6 +4,7 @@
 #include "agents/terminal_polling.hpp"
 #include "auth/password.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 
@@ -12,6 +13,30 @@ namespace {
 
 bool requireAdmin(RequestContext& c, AppContext& ctx) {
   return ctx.auth->isAdmin(*c.user);
+}
+
+int queryPage(const std::unordered_map<std::string, std::string>& query, const char* key) {
+  const auto it = query.find(key);
+  if (it == query.end() || it->second.empty()) {
+    return 1;
+  }
+  try {
+    return std::max(1, std::stoi(it->second));
+  } catch (const std::exception&) {
+    return 1;
+  }
+}
+
+std::string queryValue(const std::unordered_map<std::string, std::string>& query, const char* key) {
+  const auto it = query.find(key);
+  return it == query.end() ? std::string{} : it->second;
+}
+
+ListQuery dashboardSlice(const std::unordered_map<std::string, std::string>& query, const char* pageKey) {
+  ListQuery list;
+  list.page = queryPage(query, pageKey);
+  list.pageSize = 10;
+  return list;
 }
 
 Application requireAppAccess(AppContext& ctx, RequestContext& c, int64_t appId) {
@@ -87,6 +112,25 @@ void registerHandlers(Router& router, AppContext& ctx) {
   });
   router.add("GET", "/api/profile/hostname-suggestion", true, [&](RequestContext& c) {
     return jsonResponse(http::status::ok, UserService(ctx).hostnameSuggestion());
+  });
+
+  router.add("GET", "/api/state", true, [&](RequestContext& c) {
+    auto servers = dashboardSlice(c.query, "serversPage");
+    servers.q = queryValue(c.query, "serversQ");
+    auto applications = dashboardSlice(c.query, "appsPage");
+    applications.order = queryValue(c.query, "appsOrder");
+    if (applications.order.empty()) {
+      applications.order = "asc";
+    }
+    applications.typeFilter = queryValue(c.query, "appsType");
+    auto users = dashboardSlice(c.query, "usersPage");
+    users.order = queryValue(c.query, "usersOrder");
+    if (users.order.empty()) {
+      users.order = "asc";
+    }
+    auto domains = dashboardSlice(c.query, "domainsPage");
+    return jsonResponse(http::status::ok,
+                        StateService(ctx).dashboard(servers, applications, users, domains, *c.user));
   });
 
   router.add("GET", "/api/users", true, [&](RequestContext& c) {
@@ -214,6 +258,10 @@ void registerHandlers(Router& router, AppContext& ctx) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     ServerService(ctx).remove(std::stoll(c.params["id"]));
     return emptyResponse(http::status::no_content);
+  });
+  router.add("GET", "/api/servers/:id/overview", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, StateService(ctx).serverOverview(std::stoll(c.params["id"])));
   });
   router.add("GET", "/api/servers/:id/metrics", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
@@ -427,6 +475,10 @@ void registerHandlers(Router& router, AppContext& ctx) {
                                          std::stoll(c.params["volumeId"]), *c.user);
     return emptyResponse(http::status::no_content);
   });
+  router.add("GET", "/api/applications/:id/overview", true, [&](RequestContext& c) {
+    return jsonResponse(http::status::ok,
+                        StateService(ctx).applicationOverview(std::stoll(c.params["id"]), *c.user));
+  });
   router.add("GET", "/api/applications/:id/metrics", true, [&](RequestContext& c) {
     return jsonResponse(http::status::ok,
                         ApplicationService(ctx).metrics(std::stoll(c.params["id"]), c.query["from"],
@@ -532,6 +584,18 @@ void registerHandlers(Router& router, AppContext& ctx) {
                                                         c.request.body());
              });
   router.add("DELETE", "/api/replicas/:id/terminal/sessions/:streamId", true, [&](RequestContext& c) {
+    auto replica = ctx.repos->findReplicaById(std::stoll(c.params["id"]));
+    if (!replica) throw std::runtime_error("Replica not found");
+    requireAppAccess(ctx, c, replica->applicationId);
+    return ctx.terminalPolling->closeReplica(replica->id, c.params["streamId"], *c.user);
+  });
+  router.add("POST", "/api/replicas/:id/logs/sessions", true, [&](RequestContext& c) {
+    auto replica = ctx.repos->findReplicaById(std::stoll(c.params["id"]));
+    if (!replica) throw std::runtime_error("Replica not found");
+    requireAppAccess(ctx, c, replica->applicationId);
+    return ctx.terminalPolling->openReplica(replica->id, *c.user, c.request.body(), true);
+  });
+  router.add("DELETE", "/api/replicas/:id/logs/sessions/:streamId", true, [&](RequestContext& c) {
     auto replica = ctx.repos->findReplicaById(std::stoll(c.params["id"]));
     if (!replica) throw std::runtime_error("Replica not found");
     requireAppAccess(ctx, c, replica->applicationId);
