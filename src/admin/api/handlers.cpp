@@ -392,6 +392,20 @@ void registerHandlers(Router& router, AppContext& ctx) {
     ApplicationService(ctx).remove(std::stoll(c.params["id"]), *c.user);
     return emptyResponse(http::status::no_content);
   });
+  router.add("POST", "/api/applications/:id/db-manage", true, [&](RequestContext& c) {
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(),
+                                            nullptr, false);
+    if (!body.is_object()) {
+      return errorResponse(http::status::bad_request, "Invalid JSON");
+    }
+    return jsonResponse(http::status::ok,
+                        DatabaseAdminService(ctx).start(std::stoll(c.params["id"]), body, *c.user));
+  });
+  router.add("GET", "/api/applications/:id/db-manage/:requestId", true, [&](RequestContext& c) {
+    return jsonResponse(http::status::ok,
+                        DatabaseAdminService(ctx).poll(std::stoll(c.params["id"]),
+                                                       c.params["requestId"], *c.user));
+  });
   router.add("GET", "/api/applications/:id/volumes", true, [&](RequestContext& c) {
     return jsonResponse(http::status::ok,
                         ApplicationService(ctx).listVolumes(std::stoll(c.params["id"]), *c.user));

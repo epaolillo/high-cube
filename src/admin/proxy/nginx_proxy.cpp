@@ -30,10 +30,27 @@ std::string NginxProxy::applicationSitePath(int64_t applicationId) const {
       .string();
 }
 
+std::string NginxProxy::basicAuthFilePath(int64_t applicationId) const {
+  // Outside the highcube-*.conf include glob; nginx workers read it per request.
+  return (std::filesystem::path(config_.nginxSitesDir) / "htpasswd" /
+          ("app-" + std::to_string(applicationId)))
+      .string();
+}
+
 void NginxProxy::writeFile(const std::string& path, const std::string& content) const {
   std::filesystem::create_directories(std::filesystem::path(path).parent_path());
   std::ofstream out(path);
   out << content;
+}
+
+void NginxProxy::syncBasicAuthFile(const Application& app) const {
+  const auto path = basicAuthFilePath(app.id);
+  if (app.basicAuthUsers.empty()) {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    return;
+  }
+  writeFile(path, app.basicAuthUsers);
 }
 
 std::string NginxProxy::acmeWebroot() const {
@@ -51,13 +68,29 @@ void NginxProxy::appendAcmeChallenge(std::ostringstream& oss) const {
       << "  }\n";
 }
 
-void NginxProxy::appendProxyLocation(std::ostringstream& oss, int64_t applicationId) const {
-  oss << "  location / {\n"
-      << "    proxy_pass http://hc_app_" << applicationId << ";\n"
+void NginxProxy::appendProxyLocation(std::ostringstream& oss, const Application& app) const {
+  oss << "  location / {\n";
+  if (!app.basicAuthUsers.empty()) {
+    oss << "    auth_basic \"Restricted\";\n"
+        << "    auth_basic_user_file " << basicAuthFilePath(app.id) << ";\n";
+  }
+  // Behave like a plain reverse proxy (Traefik): no body cap, streamed bodies
+  // and responses, WebSocket upgrades, and long-lived connections.
+  oss << "    client_max_body_size 0;\n"
+      << "    proxy_pass http://hc_app_" << app.id << ";\n"
+      << "    proxy_http_version 1.1;\n"
+      << "    proxy_set_header Upgrade $http_upgrade;\n"
+      << "    proxy_set_header Connection $http_connection;\n"
       << "    proxy_set_header Host $host;\n"
       << "    proxy_set_header X-Real-IP $remote_addr;\n"
       << "    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
       << "    proxy_set_header X-Forwarded-Proto $scheme;\n"
+      << "    proxy_set_header X-Forwarded-Host $host;\n"
+      << "    proxy_set_header X-Forwarded-Port $server_port;\n"
+      << "    proxy_buffering off;\n"
+      << "    proxy_request_buffering off;\n"
+      << "    proxy_read_timeout 3600s;\n"
+      << "    proxy_send_timeout 3600s;\n"
       << "  }\n";
 }
 
@@ -103,14 +136,14 @@ void NginxProxy::appendServerBlocks(std::ostringstream& oss, const Application& 
           << "  server_name " << row.hostname << ";\n"
           << "  ssl_certificate /etc/letsencrypt/live/" << row.hostname << "/fullchain.pem;\n"
           << "  ssl_certificate_key /etc/letsencrypt/live/" << row.hostname << "/privkey.pem;\n";
-      appendProxyLocation(oss, app.id);
+      appendProxyLocation(oss, app);
       oss << "}\n";
     } else {
       oss << "server {\n"
           << "  listen 80;\n"
           << "  server_name " << row.hostname << ";\n";
       appendAcmeChallenge(oss);
-      appendProxyLocation(oss, app.id);
+      appendProxyLocation(oss, app);
       oss << "}\n";
     }
   }
@@ -190,6 +223,8 @@ std::string NginxProxy::renderApplicationSite(const Application& app) {
   if (backends > 0) {
     oss << "upstream hc_app_" << app.id << " {\n" << upstream.str() << "}\n";
   }
+  // Written before the site so a reload never references a missing file.
+  syncBasicAuthFile(app);
   appendServerBlocks(oss, app, backends);
   std::filesystem::create_directories(acmeWebroot());
   const auto path = applicationSitePath(app.id);
@@ -217,6 +252,7 @@ void NginxProxy::removeSite(const std::string& hostname) {
 void NginxProxy::removeApplicationSite(const Application& app) {
   std::error_code ec;
   std::filesystem::remove(applicationSitePath(app.id), ec);
+  std::filesystem::remove(basicAuthFilePath(app.id), ec);
   for (const auto& row : app.hostnames) {
     if (!row.hostname.empty()) {
       std::filesystem::remove(sitePath(row.hostname), ec);

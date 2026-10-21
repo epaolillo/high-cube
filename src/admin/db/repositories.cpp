@@ -52,7 +52,8 @@ constexpr const char* kApplicationSelect =
     "COALESCE(a.scale_target_cpu_percent,70),COALESCE(a.scale_target_memory_percent,80),"
     "COALESCE(a.scale_target_load,1.0),COALESCE(a.scale_cooldown_seconds,120),"
     "COALESCE(a.scale_window_seconds,180),COALESCE(a.scale_last_action_at,''),"
-    "COALESCE(u.email,''),COALESCE(a.icon,'') "
+    "COALESCE(u.email,''),COALESCE(a.icon,''),COALESCE(a.basic_auth_users,''),"
+    "COALESCE(a.database_flavor,'') "
     "FROM applications a LEFT JOIN users u ON u.id=a.created_by";
 
 int clampPageSize(int pageSize) {
@@ -146,6 +147,12 @@ Application Repositories::hydrateApplication(SQLite::Statement& st) {
   }
   if (st.getColumnCount() > 33) {
     app.icon = st.getColumn(33).isNull() ? "" : st.getColumn(33).getString();
+  }
+  if (st.getColumnCount() > 34) {
+    app.basicAuthUsers = st.getColumn(34).isNull() ? "" : st.getColumn(34).getString();
+  }
+  if (st.getColumnCount() > 35) {
+    app.databaseFlavor = st.getColumn(35).isNull() ? "" : st.getColumn(35).getString();
   }
   return app;
 }
@@ -694,8 +701,10 @@ std::vector<ApplicationHostname> Repositories::getApplicationHostnames(int64_t a
   std::vector<ApplicationHostname> rows;
   SQLite::Statement st(
       database_.db(),
-      "SELECT id,application_id,hostname,base_domain_id,tls_status,position "
-      "FROM application_hostnames WHERE application_id=? ORDER BY position ASC, id ASC");
+      "SELECT ah.id,ah.application_id,ah.hostname,ah.base_domain_id,ah.tls_status,ah.position,"
+      "COALESCE(bd.hostname,'') "
+      "FROM application_hostnames ah LEFT JOIN base_domains bd ON bd.id=ah.base_domain_id "
+      "WHERE ah.application_id=? ORDER BY ah.position ASC, ah.id ASC");
   st.bind(1, applicationId);
   while (st.executeStep()) {
     ApplicationHostname row;
@@ -705,6 +714,7 @@ std::vector<ApplicationHostname> Repositories::getApplicationHostnames(int64_t a
     row.baseDomainId = st.getColumn(3).getInt64();
     row.tlsStatus = st.getColumn(4).getString();
     row.position = st.getColumn(5).getInt();
+    row.baseDomain = lower(st.getColumn(6).getString());
     rows.push_back(row);
   }
   return rows;
@@ -891,8 +901,9 @@ int64_t Repositories::createApplication(const Application& app) {
       "health_check_path,health_check_command,max_restart_count,created_by,github_app_id,"
       "repo_full_name,port_mappings_json,pending_redeploy,scale_mode,min_replicas,max_replicas,"
       "scale_target_cpu_percent,scale_target_memory_percent,scale_target_load,"
-      "scale_cooldown_seconds,scale_window_seconds,scale_last_action_at,icon) "
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "scale_cooldown_seconds,scale_window_seconds,scale_last_action_at,icon,basic_auth_users,"
+      "database_flavor) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   st.bind(1, app.name);
   st.bind(2, app.type);
   st.bind(3, app.repoUrl);
@@ -931,6 +942,8 @@ int64_t Repositories::createApplication(const Application& app) {
   st.bind(28, app.scaleWindowSeconds);
   st.bind(29, app.scaleLastActionAt);
   st.bind(30, app.icon);
+  st.bind(31, app.basicAuthUsers);
+  st.bind(32, app.databaseFlavor);
   st.exec();
   const int64_t id = database_.db().getLastInsertRowid();
   setDependencies(id, app.dependencies);
@@ -954,7 +967,7 @@ void Repositories::updateApplication(const Application& app) {
       "pending_redeploy=?, scale_mode=?, min_replicas=?, max_replicas=?, "
       "scale_target_cpu_percent=?, scale_target_memory_percent=?, scale_target_load=?, "
       "scale_cooldown_seconds=?, scale_window_seconds=?, scale_last_action_at=?, icon=?, "
-      "created_by=? WHERE id=?");
+      "basic_auth_users=?, database_flavor=?, created_by=? WHERE id=?");
   st.bind(1, app.name);
   st.bind(2, app.type);
   st.bind(3, app.repoUrl);
@@ -992,16 +1005,40 @@ void Repositories::updateApplication(const Application& app) {
   st.bind(27, app.scaleWindowSeconds);
   st.bind(28, app.scaleLastActionAt);
   st.bind(29, app.icon);
+  st.bind(30, app.basicAuthUsers);
+  st.bind(31, app.databaseFlavor);
   if (app.createdBy > 0) {
-    st.bind(30, app.createdBy);
+    st.bind(32, app.createdBy);
   } else {
-    st.bind(30);
+    st.bind(32);
   }
-  st.bind(31, app.id);
+  st.bind(33, app.id);
   st.exec();
   setDependencies(app.id, app.dependencies);
   setTargetServers(app.id, app.targetServers);
   setApplicationHostnames(app.id, app.hostnames);
+}
+
+void Repositories::updateApplicationEnv(int64_t id, const std::string& envJson) {
+  SQLite::Statement st(database_.db(), "UPDATE applications SET env_json=? WHERE id=?");
+  st.bind(1, envJson);
+  st.bind(2, id);
+  st.exec();
+}
+
+void Repositories::updateHealthCheckCommand(int64_t id, const std::string& command) {
+  SQLite::Statement st(database_.db(),
+                       "UPDATE applications SET health_check_command=? WHERE id=?");
+  st.bind(1, command);
+  st.bind(2, id);
+  st.exec();
+}
+
+void Repositories::setPendingRedeploy(int64_t id, bool pending) {
+  SQLite::Statement st(database_.db(), "UPDATE applications SET pending_redeploy=? WHERE id=?");
+  st.bind(1, pending ? 1 : 0);
+  st.bind(2, id);
+  st.exec();
 }
 
 void Repositories::deleteApplication(int64_t id) {
@@ -1176,13 +1213,14 @@ Deployment hydrateDeploymentRow(SQLite::Statement& st) {
   d.noCache = st.getColumn(8).getInt() != 0;
   d.createdBy = st.getColumn(9).getInt64();
   d.createdAt = st.getColumn(10).getString();
+  d.deployAttempts = st.getColumn(11).getInt();
   return d;
 }
 
 constexpr const char* kDeploymentSelect =
     "SELECT id,application_id,git_sha,COALESCE(git_message,''),status,log_text,"
     "COALESCE(build_log,''),COALESCE(deploy_log,''),COALESCE(no_cache,0),"
-    "COALESCE(created_by,0),created_at FROM deployments";
+    "COALESCE(created_by,0),created_at,COALESCE(deploy_attempts,0) FROM deployments";
 
 Replica hydrateReplicaRow(SQLite::Statement& st) {
   Replica r;
@@ -1264,7 +1302,7 @@ int64_t Repositories::createDeployment(const Deployment& deployment) {
 void Repositories::updateDeployment(const Deployment& deployment) {
   SQLite::Statement st(database_.db(),
                        "UPDATE deployments SET git_sha=?, git_message=?, status=?, log_text=?, "
-                       "build_log=?, deploy_log=?, no_cache=? WHERE id=?");
+                       "build_log=?, deploy_log=?, no_cache=?, deploy_attempts=? WHERE id=?");
   st.bind(1, deployment.gitSha);
   st.bind(2, deployment.gitMessage);
   st.bind(3, deployment.status);
@@ -1272,7 +1310,8 @@ void Repositories::updateDeployment(const Deployment& deployment) {
   st.bind(5, deployment.buildLog);
   st.bind(6, deployment.deployLog);
   st.bind(7, deployment.noCache ? 1 : 0);
-  st.bind(8, deployment.id);
+  st.bind(8, deployment.deployAttempts);
+  st.bind(9, deployment.id);
   st.exec();
 }
 

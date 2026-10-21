@@ -6,6 +6,7 @@
 #include "proxy/nginx_proxy.hpp"
 #include "services/services.hpp"
 
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 #include <chrono>
@@ -282,6 +283,13 @@ void AgentHub::onMessage(AgentSession::Pointer session, const ::highcube::Envelo
       }
       break;
     }
+    case ::highcube::DB_MANAGE_RESULT: {
+      ::highcube::DbManageResult msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleDbManageResult(msg);
+      }
+      break;
+    }
     case ::highcube::DEPLOYMENT_LOG: {
       ::highcube::DeploymentLog msg;
       if (msg.ParseFromString(envelope.payload())) {
@@ -411,6 +419,130 @@ std::string AgentHub::startHostPortCheck(int port, const std::vector<int64_t>& s
     session->send(makeEnvelope(::highcube::CHECK_HOST_PORT, order));
   }
   return batchId;
+}
+
+void AgentHub::handleDbManageResult(const ::highcube::DbManageResult& msg) {
+  std::lock_guard lock(mutex_);
+  auto it = dbManage_.find(msg.correlation_id());
+  if (it == dbManage_.end()) {
+    return;
+  }
+  it->second.done = true;
+  it->second.ok = msg.ok();
+  it->second.error = msg.error();
+  it->second.resultJson = msg.payload_json().empty() ? "{}" : msg.payload_json();
+}
+
+void AgentHub::applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson) {
+  if (effect.applicationId <= 0) {
+    return;
+  }
+  if (!effect.passwordEnvKey.empty()) {
+    auto app = repos_.findApplicationById(effect.applicationId);
+    if (app) {
+      auto env = nlohmann::json::parse(app->envJson.empty() ? "{}" : app->envJson, nullptr, false);
+      if (!env.is_object()) {
+        env = nlohmann::json::object();
+      }
+      env[effect.passwordEnvKey] = effect.newPassword;
+      repos_.updateApplicationEnv(app->id, env.dump());
+    }
+  }
+  if (!effect.healthCommand.empty()) {
+    repos_.updateHealthCheckCommand(effect.applicationId, effect.healthCommand);
+    const auto result = nlohmann::json::parse(resultJson.empty() ? "{}" : resultJson, nullptr, false);
+    if (result.is_object() && result.value("healthUpdated", true) == false) {
+      repos_.setPendingRedeploy(effect.applicationId, true);
+    }
+  }
+}
+
+std::string AgentHub::startDbManage(int64_t serverId, int64_t applicationId,
+                                    const std::string& containerId, const std::string& payloadJson,
+                                    const DbManageEffect& effect) {
+  AgentSession::Pointer session;
+  std::string requestId;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = sessionsByServer_.find(serverId);
+    if (it == sessionsByServer_.end()) {
+      throw std::runtime_error("The server agent is offline");
+    }
+    session = it->second;
+    const auto now = std::chrono::steady_clock::now();
+    for (auto entry = dbManage_.begin(); entry != dbManage_.end();) {
+      if (now - entry->second.createdAt > std::chrono::minutes(10)) {
+        entry = dbManage_.erase(entry);
+      } else {
+        ++entry;
+      }
+    }
+    requestId = "db-" + std::to_string(++dbManageSeq_) + "-" + std::to_string(applicationId);
+    DbManageEntry row;
+    row.applicationId = applicationId;
+    row.effect = effect;
+    row.createdAt = now;
+    dbManage_[requestId] = std::move(row);
+  }
+  ::highcube::DbManage order;
+  order.set_correlation_id(requestId);
+  order.set_container_id(containerId);
+  order.set_payload_json(payloadJson);
+  session->send(makeEnvelope(::highcube::DB_MANAGE, order));
+  return requestId;
+}
+
+AgentHub::DbManagePoll AgentHub::pollDbManage(const std::string& requestId, int64_t applicationId) {
+  DbManagePoll poll;
+  DbManageEffect effect;
+  std::string resultJson;
+  bool apply = false;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = dbManage_.find(requestId);
+    if (it == dbManage_.end() || it->second.applicationId != applicationId) {
+      poll.status = "unknown";
+      return poll;
+    }
+    auto& entry = it->second;
+    if (!entry.done &&
+        std::chrono::steady_clock::now() - entry.createdAt > std::chrono::seconds(30)) {
+      entry.done = true;
+      entry.ok = false;
+      entry.error = "The database server did not respond in time";
+    }
+    if (!entry.done) {
+      poll.status = "pending";
+      return poll;
+    }
+    if (!entry.ok) {
+      poll.status = entry.error == "The database server did not respond in time" ? "timeout" : "error";
+      poll.error = entry.error.empty() ? "database command failed" : entry.error;
+      return poll;
+    }
+    poll.status = "ok";
+    poll.resultJson = entry.resultJson.empty() ? "{}" : entry.resultJson;
+    if (!entry.effectApplied &&
+        (!entry.effect.passwordEnvKey.empty() || !entry.effect.healthCommand.empty())) {
+      apply = true;
+      effect = entry.effect;
+      resultJson = entry.resultJson;
+    }
+  }
+  if (apply) {
+    try {
+      applyDbManageEffect(effect, resultJson);
+      std::lock_guard lock(mutex_);
+      auto it = dbManage_.find(requestId);
+      if (it != dbManage_.end()) {
+        it->second.effectApplied = true;
+        it->second.effect.newPassword.clear();
+      }
+    } catch (const std::exception& ex) {
+      spdlog::error("db manage side effect failed: {}", ex.what());
+    }
+  }
+  return poll;
 }
 
 AgentHub::PortCheckState AgentHub::pollHostPortCheck(const std::string& batchId) {

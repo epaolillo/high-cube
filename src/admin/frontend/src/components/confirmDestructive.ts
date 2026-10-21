@@ -8,6 +8,8 @@ type ConfirmOptions = {
   text?: string;
   /** Label for the confirm button. Defaults to the shared "delete" label. */
   confirmText?: string;
+  /** Red confirm button. Set false for non-destructive confirmations. */
+  danger?: boolean;
 };
 
 // Shared confirmation dialog for any destructive action (delete, remove, stop,
@@ -16,11 +18,11 @@ export async function confirmDestructive(t: TFunction, options: ConfirmOptions =
   const result = await Swal.fire({
     title: options.title ?? t('confirmDeleteTitle'),
     text: options.text ?? t('confirmDeleteBody'),
-    icon: 'warning',
+    icon: options.danger === false ? 'question' : 'warning',
     showCancelButton: true,
     confirmButtonText: options.confirmText ?? t('delete'),
     cancelButtonText: t('cancel'),
-    confirmButtonColor: '#E5484D',
+    confirmButtonColor: options.danger === false ? '#635BFF' : '#E5484D',
     cancelButtonColor: '#8898AA',
     focusCancel: true,
   });

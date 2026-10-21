@@ -89,6 +89,7 @@ DerivedActivity deriveActivity(const std::string& method, const std::string& rou
       {"PATCH /api/applications/:id/volumes/:volumeId", "application.updateVolume|application"},
       {"DELETE /api/applications/:id/volumes/:volumeId", "application.deleteVolume|application"},
       {"POST /api/applications/:id/deployments", "application.deploy|application"},
+      {"POST /api/applications/:id/db-manage", "application.dbManage|application"},
       {"POST /api/replicas/:id/stop", "replica.stop|replica"},
       {"POST /api/replicas/:id/restart", "replica.restart|replica"},
       {"POST /api/replicas/:id/terminal/sessions", "replica.terminalOpen|replica"},

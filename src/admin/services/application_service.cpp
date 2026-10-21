@@ -1,3 +1,4 @@
+#include "auth/password.hpp"
 #include "services/services.hpp"
 
 #include <boost/process.hpp>
@@ -9,6 +10,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace bp = boost::process;
@@ -65,6 +67,65 @@ nlohmann::json applicationJsonWithDomains(AppContext& ctx, const Application& ap
   return json;
 }
 
+// Builds htpasswd content from [{username, password?, passwordHash?}]. An entry
+// with neither keeps that user's current hash, so the UI never sees hashes.
+std::string parseBasicAuthUsers(const nlohmann::json& items, const std::string& current,
+                                const User& actor) {
+  if (!items.is_array()) {
+    throw std::invalid_argument("basicAuthUsers must be an array");
+  }
+  std::unordered_map<std::string, std::string> existing;
+  {
+    std::istringstream lines(current);
+    std::string line;
+    while (std::getline(lines, line)) {
+      const auto colon = line.find(':');
+      if (colon != std::string::npos && colon > 0) {
+        existing[line.substr(0, colon)] = line.substr(colon + 1);
+      }
+    }
+  }
+  std::unordered_set<std::string> seen;
+  std::string out;
+  for (const auto& item : items) {
+    if (!item.is_object()) {
+      throw std::invalid_argument("each basicAuthUsers entry must be an object");
+    }
+    const auto username = item.value("username", std::string());
+    const bool badChar = std::any_of(username.begin(), username.end(), [](unsigned char c) {
+      return c == ':' || std::isspace(c) || std::iscntrl(c);
+    });
+    if (username.empty() || username.size() > 64 || badChar) {
+      throw std::invalid_argument(
+          "basic auth username must be 1-64 characters without spaces or ':'");
+    }
+    if (!seen.insert(username).second) {
+      throw std::invalid_argument("duplicate basic auth username: " + username);
+    }
+    const auto password = item.value("password", std::string());
+    const auto passwordHash = item.value("passwordHash", std::string());
+    std::string hash;
+    if (!password.empty()) {
+      hash = hashPassword(password);
+    } else if (!passwordHash.empty()) {
+      if (actor.role != "admin") {
+        throw ForbiddenError("Only an admin can import a password hash");
+      }
+      // nginx checks it with crypt(3): bcrypt ($2y$/$2b$), sha512 ($6$), apr1, ...
+      if (passwordHash.front() != '$' || passwordHash.find_first_of(": \t\r\n") != std::string::npos) {
+        throw std::invalid_argument("passwordHash must be a crypt(3) hash");
+      }
+      hash = passwordHash;
+    } else if (const auto it = existing.find(username); it != existing.end()) {
+      hash = it->second;
+    } else {
+      throw std::invalid_argument("basic auth user " + username + " needs a password");
+    }
+    out += username + ":" + hash + "\n";
+  }
+  return out;
+}
+
 }  // namespace
 
 Application ApplicationService::requireAccess(int64_t id, const User& actor) const {
@@ -92,6 +153,16 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
       category = "other";
     }
     app.type = category;
+  }
+  if (body.contains("databaseFlavor")) {
+    std::string flavor;
+    if (!body.at("databaseFlavor").is_null()) {
+      flavor = body.at("databaseFlavor").get<std::string>();
+    }
+    if (!flavor.empty() && !isKnownDatabaseFlavor(flavor)) {
+      throw std::invalid_argument("Unknown database flavor");
+    }
+    app.databaseFlavor = flavor;
   }
   if (body.contains("icon") && !body.at("icon").is_null()) {
     const auto icon = body.at("icon").get<std::string>();
@@ -243,6 +314,9 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
   if (body.contains("env")) {
     app.envJson = body.at("env").dump();
   }
+  if (body.contains("basicAuthUsers")) {
+    app.basicAuthUsers = parseBasicAuthUsers(body.at("basicAuthUsers"), app.basicAuthUsers, actor);
+  }
   app.healthCheckType = body.value("healthCheckType", app.healthCheckType.empty() ? "none" : app.healthCheckType);
   app.healthCheckPath = body.value("healthCheckPath", app.healthCheckPath.empty() ? "/" : app.healthCheckPath);
   app.healthCheckCommand = body.value("healthCheckCommand", app.healthCheckCommand);
@@ -332,9 +406,10 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
         }
         auto subdomain = toLower(item.value("subdomain", ""));
         const auto baseDomainId = item.value("baseDomainId", static_cast<int64_t>(0));
-        if (!isValidSubdomainLabel(subdomain)) {
+        // An empty subdomain binds the bare base domain (apex).
+        if (!subdomain.empty() && !isValidSubdomainLabel(subdomain)) {
           throw std::invalid_argument(
-              "subdomain must be a single DNS label (lowercase letters, digits, hyphen)");
+              "subdomain must be empty or a single DNS label (lowercase letters, digits, hyphen)");
         }
         if (baseDomainId <= 0) {
           throw std::invalid_argument("baseDomainId is required for each hostname");
@@ -347,7 +422,8 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
           throw std::invalid_argument("unknown base domain");
         }
         ApplicationHostname row;
-        row.hostname = subdomain + "." + toLower(domain->hostname);
+        row.hostname = subdomain.empty() ? toLower(domain->hostname)
+                                         : subdomain + "." + toLower(domain->hostname);
         row.baseDomainId = baseDomainId;
         row.tlsStatus = "pending";
         if (existing) {
@@ -514,6 +590,7 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   const auto oldDockerfile = existing.dockerfilePath;
   const auto oldBaseDir = existing.baseDirectory;
   const auto oldBranch = existing.branch;
+  const auto oldBasicAuth = existing.basicAuthUsers;
   auto app = parseBody(body, &existing, actor);
   app.id = id;
   app.createdBy = existing.createdBy;
@@ -572,6 +649,9 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
         ctx_.certbot->requestCertificate(app.id, row.hostname);
       }
     }
+    ctx_.proxy->renderApplicationSite(*ctx_.repos->findApplicationById(id));
+  } else if (app.basicAuthUsers != oldBasicAuth) {
+    // Basic auth lives in the nginx site only; no redeploy needed.
     ctx_.proxy->renderApplicationSite(*ctx_.repos->findApplicationById(id));
   }
   if (body.contains("desiredReplicas")) {

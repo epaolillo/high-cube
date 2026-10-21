@@ -57,8 +57,14 @@ nlohmann::json applicationToJson(const Application& app) {
   nlohmann::json hostnames = nlohmann::json::array();
   for (const auto& row : app.hostnames) {
     std::string subdomain = row.hostname;
-    const auto dot = row.hostname.find('.');
-    if (dot != std::string::npos) {
+    const auto suffix = "." + row.baseDomain;
+    if (!row.baseDomain.empty() && row.hostname == row.baseDomain) {
+      subdomain.clear();
+    } else if (!row.baseDomain.empty() && row.hostname.size() > suffix.size() &&
+               row.hostname.compare(row.hostname.size() - suffix.size(), suffix.size(),
+                                    suffix) == 0) {
+      subdomain = row.hostname.substr(0, row.hostname.size() - suffix.size());
+    } else if (const auto dot = row.hostname.find('.'); dot != std::string::npos) {
       subdomain = row.hostname.substr(0, dot);
     }
     hostnames.push_back({{"id", row.id},
@@ -68,10 +74,23 @@ nlohmann::json applicationToJson(const Application& app) {
                          {"tlsStatus", row.tlsStatus},
                          {"position", row.position}});
   }
+  // Usernames only: the hashes never leave the server.
+  nlohmann::json basicAuthUsers = nlohmann::json::array();
+  {
+    std::istringstream lines(app.basicAuthUsers);
+    std::string line;
+    while (std::getline(lines, line)) {
+      const auto colon = line.find(':');
+      if (colon != std::string::npos && colon > 0) {
+        basicAuthUsers.push_back({{"username", line.substr(0, colon)}});
+      }
+    }
+  }
   nlohmann::json j = {
       {"id", app.id},
       {"name", app.name},
       {"type", app.type},
+      {"databaseFlavor", app.databaseFlavor},
       {"icon", app.icon},
       {"repoUrl", app.repoUrl},
       {"branch", app.branch},
@@ -92,6 +111,7 @@ nlohmann::json applicationToJson(const Application& app) {
       {"hostname", app.hostname},
       {"tlsStatus", app.tlsStatus},
       {"hostnames", hostnames},
+      {"basicAuthUsers", basicAuthUsers},
       {"healthCheckType", app.healthCheckType},
       {"healthCheckPath", app.healthCheckPath},
       {"healthCheckCommand", app.healthCheckCommand},
@@ -109,6 +129,12 @@ nlohmann::json applicationToJson(const Application& app) {
       {"repoFullName", app.repoFullName},
       {"source", app.githubAppId ? "github_app" : "public"},
   };
+  const auto dbEngine = managedDatabaseEngine(app);
+  if (dbEngine.empty()) {
+    j["dbEngine"] = nullptr;
+  } else {
+    j["dbEngine"] = dbEngine;
+  }
   if (app.githubAppId) {
     j["githubAppId"] = *app.githubAppId;
   } else {
@@ -125,6 +151,7 @@ nlohmann::json deploymentToJson(const Deployment& deployment) {
       {"gitMessage", deployment.gitMessage},
       {"status", deployment.status},
       {"noCache", deployment.noCache},
+      {"deployAttempts", deployment.deployAttempts},
       {"createdBy", deployment.createdBy},
       {"createdAt", deployment.createdAt},
       {"hasBuildLog", !deployment.buildLog.empty()},

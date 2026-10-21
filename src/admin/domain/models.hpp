@@ -48,6 +48,8 @@ struct ApplicationHostname {
   int64_t applicationId = 0;
   std::string hostname;
   int64_t baseDomainId = 0;
+  // Hostname of the base domain; filled on read only.
+  std::string baseDomain;
   std::string tlsStatus = "pending";
   int position = 0;
 };
@@ -96,6 +98,8 @@ struct Application {
   int64_t id = 0;
   std::string name;
   std::string type = "web";
+  // Managed SQL flavor (mysql-8, postgres-16, pgvector-17, ...). Empty hides Management.
+  std::string databaseFlavor;
   // Catalog logo path ("/app-images/<logo>") or an uploaded square data URL.
   std::string icon;
   std::string repoUrl;
@@ -119,6 +123,8 @@ struct Application {
   std::string hostname;  // primary hostname (position 0), mirrored for list views
   std::string tlsStatus = "pending";  // primary hostname TLS status
   std::vector<ApplicationHostname> hostnames;
+  // htpasswd lines ("username:crypt-hash"); empty disables HTTP basic auth.
+  std::string basicAuthUsers;
   std::string healthCheckType = "none";
   std::string healthCheckPath = "/";
   std::string healthCheckCommand;
@@ -147,6 +153,9 @@ struct Deployment {
   bool noCache = false;
   int64_t createdBy = 0;
   std::string createdAt;
+  // Number of failed build/start attempts for this deployment. Reset to 0 once it
+  // rolls out successfully; the orchestrator stops relaunching past a hard cap.
+  int deployAttempts = 0;
 };
 
 struct Replica {

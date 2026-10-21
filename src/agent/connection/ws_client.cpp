@@ -2,6 +2,7 @@
 
 #include "metrics/host_metrics.hpp"
 #include "protocol/codec.hpp"
+#include "runtime/db_manage.hpp"
 
 #include <boost/process.hpp>
 #include <openssl/err.h>
@@ -170,9 +171,6 @@ void WsClient::doRead() {
 }
 
 void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
-  auto sendStatus = [this](const ::highcube::ContainerStatus& status) {
-    send(makeEnvelope(::highcube::CONTAINER_STATUS, status));
-  };
   switch (envelope.kind()) {
     case ::highcube::DEPLOY_REPLICA: {
       ::highcube::DeployReplica order;
@@ -198,7 +196,13 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
     case ::highcube::STOP_REPLICA: {
       ::highcube::StopReplica order;
       if (order.ParseFromString(envelope.payload())) {
-        runtime_.handleStop(order, sendStatus);
+        // A database may take up to two minutes to shut down; keep the socket loop responsive.
+        auto self = shared_from_this();
+        std::thread([self, order]() {
+          self->runtime_.handleStop(order, [self](const ::highcube::ContainerStatus& status) {
+            self->send(makeEnvelope(::highcube::CONTAINER_STATUS, status));
+          });
+        }).detach();
       }
       break;
     }
@@ -213,7 +217,13 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
     case ::highcube::RESTART_REPLICA: {
       ::highcube::RestartReplica order;
       if (order.ParseFromString(envelope.payload())) {
-        runtime_.handleRestart(order, sendStatus);
+        // Waits for the health check after the restart; keep the socket loop responsive.
+        auto self = shared_from_this();
+        std::thread([self, order]() {
+          self->runtime_.handleRestart(order, [self](const ::highcube::ContainerStatus& status) {
+            self->send(makeEnvelope(::highcube::CONTAINER_STATUS, status));
+          });
+        }).detach();
       }
       break;
     }
@@ -350,6 +360,29 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
       result.set_port(order.port());
       result.set_available(runtime_.isHostPortAvailable(order.port()));
       send(makeEnvelope(::highcube::HOST_PORT_RESULT, result));
+      break;
+    }
+    case ::highcube::DB_MANAGE: {
+      ::highcube::DbManage order;
+      if (!order.ParseFromString(envelope.payload())) {
+        break;
+      }
+      // SQL can take a few seconds; keep the socket loop responsive.
+      auto self = shared_from_this();
+      std::thread([self, order]() {
+        const auto result = manageDatabase(order.container_id(), order.payload_json());
+        ::highcube::DbManageResult msg;
+        msg.set_correlation_id(order.correlation_id());
+        msg.set_ok(result.ok);
+        msg.set_error(result.error);
+        msg.set_payload_json(result.payloadJson.empty() ? "{}" : result.payloadJson);
+        net::post(self->ioc_, [self, msg]() {
+          if (!self->connected_) {
+            return;
+          }
+          self->send(makeEnvelope(::highcube::DB_MANAGE_RESULT, msg));
+        });
+      }).detach();
       break;
     }
     default:

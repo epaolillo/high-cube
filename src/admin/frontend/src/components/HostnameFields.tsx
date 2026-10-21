@@ -10,6 +10,11 @@ export type HostnameRow = {
   hostname?: string;
 };
 
+// An empty subdomain binds the bare base domain (apex).
+export function fullHostname(subdomain: string, baseDomain: string): string {
+  return subdomain ? `${subdomain}.${baseDomain}` : baseDomain;
+}
+
 type Props = {
   domains: BaseDomainOption[];
   value: HostnameRow[];
@@ -101,6 +106,11 @@ export function HostnameFields({
                 />
               )}
             </Space.Compact>
+            {!row.subdomain && domain ? (
+              <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+                {t('apexHostnameHint', { hostname: domain.hostname })}
+              </Typography.Text>
+            ) : null}
             <div
               style={{
                 marginTop: 8,
@@ -123,7 +133,7 @@ export function HostnameFields({
                     size="small"
                     disabled={
                       certificateBusy ||
-                      `${row.subdomain}.${domain?.hostname || ''}` !== row.hostname
+                      fullHostname(row.subdomain, domain?.hostname || '') !== row.hostname
                     }
                     onClick={() => onRequestCertificate(row)}
                   >

@@ -23,8 +23,10 @@ public:
 private:
   std::string sitePath(const std::string& name) const;
   std::string applicationSitePath(int64_t applicationId) const;
+  std::string basicAuthFilePath(int64_t applicationId) const;
   void writeFile(const std::string& path, const std::string& content) const;
-  void appendProxyLocation(std::ostringstream& oss, int64_t applicationId) const;
+  void syncBasicAuthFile(const Application& app) const;
+  void appendProxyLocation(std::ostringstream& oss, const Application& app) const;
   void appendAcmeChallenge(std::ostringstream& oss) const;
   void appendServerBlocks(std::ostringstream& oss, const Application& app, int backends) const;
 

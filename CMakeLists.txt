@@ -61,6 +61,7 @@ set(ADMIN_SOURCES
   src/admin/services/settings_service.cpp
   src/admin/services/server_service.cpp
   src/admin/services/application_service.cpp
+  src/admin/services/db_admin_service.cpp
   src/admin/services/deployment_service.cpp
   src/admin/services/placement_service.cpp
   src/admin/services/metrics_retention_service.cpp
@@ -107,6 +108,7 @@ set(AGENT_SOURCES
   src/agent/connection/ws_client.cpp
   src/agent/protocol/codec.cpp
   src/agent/runtime/docker_runtime.cpp
+  src/agent/runtime/db_manage.cpp
   src/agent/runtime/git_checkout.cpp
   src/agent/metrics/host_metrics.cpp
   src/agent/metrics/container_metrics.cpp

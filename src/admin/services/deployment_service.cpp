@@ -152,6 +152,8 @@ void DeploymentService::finalizeRollout(int64_t applicationId, int64_t deploymen
   auto deployment = ctx_.repos->findDeploymentById(deploymentId);
   if (deployment) {
     deployment->status = "success";
+    // A clean rollout clears the failure budget so future relaunches get a fresh cap.
+    deployment->deployAttempts = 0;
     ctx_.repos->updateDeployment(*deployment);
   }
   if (app) {
@@ -405,6 +407,9 @@ void DeploymentService::onContainerStatus(const ::highcube::ContainerStatus& sta
     if (deployment) {
       if (isFailedStatus(status.status())) {
         deployment->status = "failed";
+        // Count the failed attempt so the orchestrator can stop relaunching a
+        // deployment that never manages to build or start.
+        deployment->deployAttempts += 1;
       }
       ctx_.repos->updateDeployment(*deployment);
     }

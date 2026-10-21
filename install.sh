@@ -21,6 +21,10 @@
 # Each stage is checked. The script exits on the first failure.
 # Installing and reloading NGINX needs sudo on the destination. If sudo is not
 # passwordless, run this script from a terminal so the password prompt works.
+#
+# HC_NGINX_DEFER=1 installs and configures NGINX but leaves it stopped and
+# disabled, for hosts where another proxy still owns ports 80 and 443. Start it
+# later with: sudo systemctl enable --now nginx
 set -euo pipefail
 
 # ASCII rendering of logo.png (generated). Green truecolor with a
@@ -150,6 +154,11 @@ INSTALL_DIR="/var/www"
 # environment and may also be prompted for when running on a terminal.
 ADMIN_URL="${HC_ADMIN_URL:-}"
 AGENT_TOKEN="${HC_AGENT_TOKEN:-}"
+NGINX_DEFER="${HC_NGINX_DEFER:-0}"
+if [[ "${NGINX_DEFER}" != "0" && "${NGINX_DEFER}" != "1" ]]; then
+  echo "error: HC_NGINX_DEFER must be 0 or 1 (got: ${NGINX_DEFER})" >&2
+  exit 1
+fi
 
 DEST_DIR="${INSTALL_DIR}/high-cube"
 PUBLIC_DIR="${DEST_DIR}/public"
@@ -407,7 +416,7 @@ REMOTE_SCRIPT="$(mktemp)"
 DB_STAGE=""
 cleanup() { rm -rf "${LIB_STAGE}" "${REMOTE_SCRIPT}" ${DB_STAGE:+"${DB_STAGE}"}; }
 trap cleanup EXIT
-for lib in libboost_filesystem.so.1.83.0 libspdlog.so.1.12 libfmt.so.9; do
+for lib in libboost_filesystem.so.1.83.0 libspdlog.so.1.12 libfmt.so.9 libprotobuf.so.32; do
   if [[ ! -e "/lib/x86_64-linux-gnu/${lib}" ]]; then
     echo "FAIL 3. Local runtime library ${lib} is missing" >&2
     exit 1
@@ -495,6 +504,7 @@ PRESET_TOKEN="${5:-}"
 ROLE="${6:-both}"
 ADMIN_URL="${7:-}"
 AGENT_TOKEN="${8:-}"
+NGINX_DEFER="${9:-0}"
 cd "${DEST_DIR}"
 
 want_admin=0; want_agent=0
@@ -701,13 +711,30 @@ if [[ "${want_admin}" == 1 ]]; then
   fi
   if ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1; then
     as_root apt-get update -y
-    as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx certbot
+    if [[ "${NGINX_DEFER}" == 1 ]]; then
+      # The package would start NGINX right away and fail on the busy ports.
+      as_root sh -c 'printf "#!/bin/sh\nexit 101\n" > /usr/sbin/policy-rc.d && chmod 755 /usr/sbin/policy-rc.d'
+      set +e
+      as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx certbot
+      apt_rc=$?
+      set -e
+      as_root rm -f /usr/sbin/policy-rc.d
+      [[ "${apt_rc}" -eq 0 ]]
+    else
+      as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx certbot
+    fi
   fi
   command -v nginx >/dev/null 2>&1
   command -v certbot >/dev/null 2>&1
-  as_root systemctl enable nginx
-  as_root systemctl start nginx
-  as_root systemctl is-active nginx
+  if [[ "${NGINX_DEFER}" == 1 ]]; then
+    # Keep it off at boot too, so it never grabs 80/443 before the other proxy.
+    as_root systemctl disable nginx
+    as_root systemctl stop nginx 2>/dev/null || true
+  else
+    as_root systemctl enable nginx
+    as_root systemctl start nginx
+    as_root systemctl is-active nginx
+  fi
 
   # Publish only the frontend. The rest of the install dir holds secrets and is not the web root.
   as_root mkdir -p "${PUBLIC_DIR}"
@@ -763,8 +790,12 @@ EOF
     echo "FAIL 10. nginx -t rejected the configuration; leaving the previous config loaded" >&2
     exit 1
   fi
-  as_root systemctl reload nginx
-  echo "OK  10. NGINX installed, tested, and reloaded"
+  if [[ "${NGINX_DEFER}" == 1 ]]; then
+    echo "OK  10. NGINX installed and tested; left stopped and disabled (HC_NGINX_DEFER=1)"
+  else
+    as_root systemctl reload nginx
+    echo "OK  10. NGINX installed, tested, and reloaded"
+  fi
 fi
 
 echo "==> 11. Services"
@@ -856,14 +887,16 @@ if [[ "${want_admin}" == 1 ]]; then
     echo "FAIL 12. API on :3000 returned ${api_code}, expected 401" >&2
     exit 1
   fi
-  panel="$(curl -fsS -H "Host: ${DEST_IP}" http://127.0.0.1/)"
-  printf '%s' "${panel}" | grep -q "High Cube"
-  asset="$(printf '%s' "${panel}" | sed -n 's/.*src="\(\/assets\/[^"]*\)".*/\1/p' | head -1)"
-  if [[ -z "${asset}" ]]; then
-    echo "FAIL 12. Panel HTML has no frontend asset" >&2
-    exit 1
+  if [[ "${NGINX_DEFER}" != 1 ]]; then
+    panel="$(curl -fsS -H "Host: ${DEST_IP}" http://127.0.0.1/)"
+    printf '%s' "${panel}" | grep -q "High Cube"
+    asset="$(printf '%s' "${panel}" | sed -n 's/.*src="\(\/assets\/[^"]*\)".*/\1/p' | head -1)"
+    if [[ -z "${asset}" ]]; then
+      echo "FAIL 12. Panel HTML has no frontend asset" >&2
+      exit 1
+    fi
+    curl -fsS -o /dev/null -H "Host: ${DEST_IP}" "http://127.0.0.1${asset}"
   fi
-  curl -fsS -o /dev/null -H "Host: ${DEST_IP}" "http://127.0.0.1${asset}"
   if [[ "${want_agent}" == 1 ]]; then
     ready=0
     for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -909,9 +942,9 @@ run_remote() {
     # The script must not occupy stdin, because sudo reads the password from it.
     "${RSYNC[@]}" "${REMOTE_SCRIPT}" "${DEST_USER}@${DEST_IP}:/tmp/hc-update-remote.sh"
     ssh -tt -o ConnectTimeout=10 "${DEST_USER}@${DEST_IP}" \
-      "bash /tmp/hc-update-remote.sh '${DEST_IP}' '${DEST_DIR}' interactive '${COPY_DB}' ${token_q} ${role_q} ${admin_url_q} ${agent_token_q}"
+      "bash /tmp/hc-update-remote.sh '${DEST_IP}' '${DEST_DIR}' interactive '${COPY_DB}' ${token_q} ${role_q} ${admin_url_q} ${agent_token_q} '${NGINX_DEFER}'"
   else
-    "${SSH[@]}" "bash -s -- '${DEST_IP}' '${DEST_DIR}' nopw '${COPY_DB}' ${token_q} ${role_q} ${admin_url_q} ${agent_token_q}" < "${REMOTE_SCRIPT}"
+    "${SSH[@]}" "bash -s -- '${DEST_IP}' '${DEST_DIR}' nopw '${COPY_DB}' ${token_q} ${role_q} ${admin_url_q} ${agent_token_q} '${NGINX_DEFER}'" < "${REMOTE_SCRIPT}"
   fi
 }
 
@@ -934,7 +967,10 @@ if [[ "${remote_rc}" -ne 0 ]]; then
   exit "${remote_rc}"
 fi
 
-if [[ "${ROLE}" != "agent" ]]; then
+if [[ "${ROLE}" != "agent" && "${NGINX_DEFER}" == 1 ]]; then
+  echo "OK  13. Skipped: NGINX is deferred (HC_NGINX_DEFER=1)"
+  echo "Deploy succeeded (role: ${ROLE}). API on http://${DEST_IP}:3000/; start NGINX to serve the panel."
+elif [[ "${ROLE}" != "agent" ]]; then
   echo "==> 13. Check the panel from this machine"
   panel_file="$(mktemp)"
   panel_code="$(curl -s -o "${panel_file}" -w '%{http_code}' "http://${DEST_IP}/" || true)"

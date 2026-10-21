@@ -42,6 +42,14 @@ private:
   // Stops containers of this application that still publish one of the fixed host ports.
   void releaseApplicationHostPorts(int64_t applicationId, const std::vector<int>& hostPorts,
                                    const LogCallback& logCb) const;
+  // Address on the highcube network, empty when the container is not attached.
+  std::string highcubeIp(const std::string& containerId) const;
+  // inspectStatus once Docker stops reporting "starting": the first health result only comes
+  // after --health-interval, and "unhealthy" after --health-retries more probes.
+  std::string waitWhileStarting(const std::string& containerId);
+  bool mountsVolume(const std::string& container) const;
+  // Removes a container; one holding a volume is stopped cleanly first.
+  void removeContainer(const std::string& container) const;
   std::string docker(const std::vector<std::string>& args) const;
   int dockerCode(const std::vector<std::string>& args) const;
   bool consumeCancelled(int64_t replicaId) const;

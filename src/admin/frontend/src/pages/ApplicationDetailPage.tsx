@@ -30,10 +30,12 @@ import api from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { confirmRedeploy } from '../components/confirmRedeploy';
 import { confirmDestructive } from '../components/confirmDestructive';
+import { DatabaseManagementTab } from '../components/DatabaseManagementTab';
 import { DockerfileExposeHint } from '../components/DockerfileExposeHint';
 import { HostnamePills } from '../components/HostnamePills';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { APP_CATEGORIES } from '../components/appCategories';
+import { DATABASE_FLAVORS } from '../data/databaseFlavors';
 import { BaseDomainOption, HostnameFields, HostnameRow } from '../components/HostnameFields';
 import { connectTerminalTarget, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
@@ -52,10 +54,18 @@ type PortMapping = {
   hostPort: number;
 };
 
+// An empty password on a saved user keeps its current password.
+type BasicAuthRow = {
+  username: string;
+  password: string;
+  saved: boolean;
+};
+
 type Application = {
   id: number;
   name: string;
   type: string;
+  databaseFlavor?: string;
   icon?: string;
   repoUrl: string;
   repoFullName?: string;
@@ -88,6 +98,8 @@ type Application = {
     position: number;
   }[];
   availableBaseDomains?: BaseDomainOption[];
+  basicAuthUsers?: { username: string }[];
+  dbEngine?: 'mysql' | 'postgres' | null;
   internalEndpoint?: string;
   env?: Record<string, string>;
   volumes?: { id: number; name: string; mountPath: string }[];
@@ -541,6 +553,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   } | null>(null);
   const certificateLogRef = useRef<HTMLPreElement>(null);
   const [domains, setDomains] = useState<BaseDomainOption[]>([]);
+  const [basicAuthRows, setBasicAuthRows] = useState<BasicAuthRow[]>([]);
+  const basicAuthDirty = useRef(false);
   const [portMappings, setPortMappings] = useState<PortMapping[]>([]);
   const serverMappings = useRef<string>('[]');
   // Live host-port availability: port number -> check state.
@@ -596,6 +610,17 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
             ]
           : [];
       setHostnameRows(rows);
+    }
+    if (!basicAuthDirty.current) {
+      setBasicAuthRows(
+        Array.isArray(appRes.data.basicAuthUsers)
+          ? appRes.data.basicAuthUsers.map((row: { username: string }) => ({
+              username: row.username,
+              password: '',
+              saved: true,
+            }))
+          : [],
+      );
     }
     const nextMappings: PortMapping[] = Array.isArray(appRes.data.portMappings)
       ? appRes.data.portMappings.map((m: PortMapping) => ({
@@ -777,6 +802,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     message.success(t('saved'));
   };
 
+  const saveFlavor = async (databaseFlavor: string) => {
+    if (!id) return;
+    await api.patch(`/applications/${id}`, { databaseFlavor });
+    await load();
+    message.success(t('saved'));
+  };
+
   const saveOwner = async (createdBy: number) => {
     if (!id) return;
     await api.patch(`/applications/${id}`, { createdBy });
@@ -891,7 +923,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     let saved = false;
     try {
       const patch: Record<string, unknown> = {};
-      if (hostnameRows.some((row) => !row.subdomain || !row.baseDomainId)) {
+      if (hostnameRows.some((row) => !row.baseDomainId)) {
         message.error(t('hostnameRequired'));
         setSaving(false);
         return;
@@ -900,6 +932,28 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         subdomain: row.subdomain,
         baseDomainId: row.baseDomainId,
       }));
+      if (basicAuthDirty.current) {
+        const usernames = basicAuthRows.map((row) => row.username.trim());
+        if (usernames.some((name) => !name || /[\s:]/.test(name))) {
+          message.error(t('basicAuthUsernameInvalid'));
+          setSaving(false);
+          return;
+        }
+        if (new Set(usernames).size !== usernames.length) {
+          message.error(t('basicAuthUsernameDuplicate'));
+          setSaving(false);
+          return;
+        }
+        if (basicAuthRows.some((row) => !row.saved && !row.password)) {
+          message.error(t('basicAuthPasswordRequired'));
+          setSaving(false);
+          return;
+        }
+        patch.basicAuthUsers = basicAuthRows.map((row) => ({
+          username: row.username.trim(),
+          ...(row.password ? { password: row.password } : {}),
+        }));
+      }
       if (isAdmin) {
         if (JSON.stringify(portMappings) !== serverMappings.current) {
           patch.portMappings = portMappings;
@@ -941,6 +995,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       serverMappings.current = JSON.stringify(savedMappings);
       setPortMappings(savedMappings);
       hostnameDirty.current = false;
+      basicAuthDirty.current = false;
       targetsDirty.current = false;
       scaleDirty.current = false;
       setApp(data);
@@ -1180,6 +1235,88 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               setHostnameRows(rows);
             }}
           />
+          <div style={{ marginTop: 20 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                marginBottom: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Typography.Text strong>{t('basicAuth')}</Typography.Text>
+              <Button
+                onClick={() => {
+                  basicAuthDirty.current = true;
+                  setBasicAuthRows((rows) => [...rows, { username: '', password: '', saved: false }]);
+                }}
+              >
+                {t('addBasicAuthUser')}
+              </Button>
+            </div>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+              {t('basicAuthHint')}
+            </Typography.Paragraph>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {basicAuthRows.length === 0 ? (
+                <Typography.Text type="secondary">{t('basicAuthNone')}</Typography.Text>
+              ) : (
+                basicAuthRows.map((row, index) => (
+                  <div
+                    key={`basic-auth-${index}`}
+                    style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}
+                  >
+                    <div>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                        {t('basicAuthUsername')}
+                      </Typography.Text>
+                      <Input
+                        value={row.username}
+                        autoComplete="off"
+                        style={{ width: 200 }}
+                        onChange={(event) => {
+                          basicAuthDirty.current = true;
+                          const next = [...basicAuthRows];
+                          next[index] = { ...row, username: event.target.value };
+                          setBasicAuthRows(next);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                        {t('basicAuthPassword')}
+                      </Typography.Text>
+                      <Input.Password
+                        value={row.password}
+                        autoComplete="new-password"
+                        placeholder={row.saved ? t('basicAuthPasswordKeep') : undefined}
+                        style={{ width: 260 }}
+                        onChange={(event) => {
+                          basicAuthDirty.current = true;
+                          const next = [...basicAuthRows];
+                          next[index] = { ...row, password: event.target.value };
+                          setBasicAuthRows(next);
+                        }}
+                      />
+                    </div>
+                    <Tooltip title={t('remove')}>
+                      <Button
+                        danger
+                        aria-label={t('remove')}
+                        icon={<DeleteOutlined />}
+                        onClick={() => {
+                          basicAuthDirty.current = true;
+                          setBasicAuthRows((rows) => rows.filter((_, i) => i !== index));
+                        }}
+                      />
+                    </Tooltip>
+                  </div>
+                ))
+              )}
+            </Space>
+          </div>
           <Modal
             open={Boolean(certificateProgress)}
             title={t('certificateProgressTitle', { hostname: certificateProgress?.hostname || '' })}
@@ -1743,6 +1880,19 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                 />
               </Tooltip>
             )}
+            <Tooltip title={t('databaseFlavor')}>
+              <Select
+                allowClear
+                value={app.databaseFlavor || undefined}
+                placeholder={t('databaseFlavorNone')}
+                onChange={(value) => void saveFlavor(value || '')}
+                style={{ minWidth: 200 }}
+                options={DATABASE_FLAVORS.map((flavor) => ({
+                  value: flavor.id,
+                  label: t(flavor.labelKey),
+                }))}
+              />
+            </Tooltip>
             <Tooltip title={t('category')}>
               <Select
                 value={APP_CATEGORIES.some((def) => def.value === app.type) ? app.type : 'other'}
@@ -1837,6 +1987,21 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       <Tabs
         items={[
           { key: 'overview', label: t('overview'), children: overview },
+          ...(app.dbEngine
+            ? [
+                {
+                  key: 'management',
+                  label: t('dbManagement'),
+                  children: (
+                    <DatabaseManagementTab
+                      appId={id}
+                      engine={app.dbEngine}
+                      onChanged={() => void load()}
+                    />
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'deployments',
             label: t('deployments'),

@@ -31,6 +31,9 @@ struct VolumeCacheEntry {
 std::mutex volumeCacheMutex;
 std::unordered_map<std::string, VolumeCacheEntry> volumeCache;
 
+// Databases need time to flush and close their files; SIGKILL can leave MyISAM tables crashed.
+constexpr int kVolumeStopTimeoutSeconds = 120;
+
 double parsePercent(const std::string& value) {
   try {
     return std::stod(value);
@@ -248,8 +251,30 @@ void DockerRuntime::releaseApplicationHostPorts(int64_t applicationId,
       logCb("deploy", "Stopping previous container " + name +
                           " so the configured host port can be published\n");
     }
-    dockerCode({"rm", "-f", id});
+    removeContainer(id);
   }
+}
+
+bool DockerRuntime::mountsVolume(const std::string& container) const {
+  const auto mounts = nlohmann::json::parse(
+      trimRight(docker({"container", "inspect", "--format", "{{json .Mounts}}", container})), nullptr,
+      false);
+  if (!mounts.is_array()) {
+    return false;
+  }
+  for (const auto& mount : mounts) {
+    if (mount.is_object() && mount.value("Type", "") == "volume") {
+      return true;
+    }
+  }
+  return false;
+}
+
+void DockerRuntime::removeContainer(const std::string& container) const {
+  if (mountsVolume(container)) {
+    dockerCode({"stop", "--time", std::to_string(kVolumeStopTimeoutSeconds), container});
+  }
+  dockerCode({"rm", "-f", container});
 }
 
 std::string DockerRuntime::docker(const std::vector<std::string>& args) const {
@@ -375,7 +400,19 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
     const std::string name =
         "hc-" + std::to_string(order.application_id()) + "-" + std::to_string(order.replica_id());
     if (hasVolumes) {
-      dockerCode({"rm", "-f", name});
+      // A volume app runs a single replica: anything else of this application on this host
+      // is the previous generation and must release the volume before the new one starts.
+      const auto previous =
+          splitLines(docker({"ps", "-aq", "--no-trunc", "--filter",
+                             "label=highcube.application=" + std::to_string(order.application_id())}));
+      for (const auto& container : previous) {
+        if (logCb) {
+          logCb("deploy", "Stopping previous container " + container.substr(0, 12) +
+                              " before reusing its volumes\n");
+        }
+        removeContainer(container);
+      }
+      removeContainer(name);
     }
 
     std::vector<std::string> runArgs = {
@@ -402,6 +439,11 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
           "highcube-" + std::to_string(order.application_id()) + "-" + volume.name();
       runArgs.push_back("-v");
       runArgs.push_back(volName + ":" + volume.mount_path());
+    }
+    if (hasVolumes) {
+      // Also honoured when dockerd stops containers on shutdown.
+      runArgs.push_back("--stop-timeout");
+      runArgs.push_back(std::to_string(kVolumeStopTimeoutSeconds));
     }
 
     int hostPort = 0;
@@ -490,7 +532,7 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
 
     int runCode = dockerStreaming(runArgs, logCb, "deploy");
     if (runCode != 0) {
-      dockerCode({"rm", "-f", name});
+      removeContainer(name);
       status.set_status("failed");
       std::string failure = "docker run failed";
       if (fixedHostPorts) {
@@ -521,28 +563,14 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       containerId.pop_back();
     }
     status.set_container_id(containerId);
-    {
-      // IP on the highcube network. nginx (on the admin host) proxies public
-      // hostnames to this IP, so no host port needs to be published.
-      std::string ip = docker({"inspect", "--format",
-                               "{{with index .NetworkSettings.Networks \"highcube\"}}{{.IPAddress}}{{end}}",
-                               containerId});
-      while (!ip.empty() && (ip.back() == '\n' || ip.back() == '\r' || ip.back() == ' ')) {
-        ip.pop_back();
-      }
-      if (!ip.empty()) {
-        status.set_container_ip(ip);
-      }
+    if (const std::string ip = highcubeIp(containerId); !ip.empty()) {
+      status.set_container_ip(ip);
     }
     if (hostPort > 0) {
       status.set_host_port(hostPort);
     }
 
-    std::string health = inspectStatus(containerId);
-    for (int i = 0; i < 10 && health == "starting"; ++i) {
-      std::this_thread::sleep_for(std::chrono::seconds(2));
-      health = inspectStatus(containerId);
-    }
+    const std::string health = waitWhileStarting(containerId);
     if (health == "healthy" || health == "running") {
       status.set_status(health == "healthy" ? "healthy" : "running");
       status.set_message("replica ready");
@@ -635,7 +663,7 @@ void DockerRuntime::removePreviousApplicationImages(int64_t applicationId, int64
           applicationLabel == appId || containerName.rfind(namePrefix, 0) == 0;
       const bool sameDeployment = deploymentLabel == deploymentIdText;
       if (sameApp && !sameDeployment) {
-        dockerCode({"rm", "-f", containerId});
+        removeContainer(containerId);
       }
     }
     dockerCode({"rmi", imageId});
@@ -645,11 +673,10 @@ void DockerRuntime::removePreviousApplicationImages(int64_t applicationId, int64
 void DockerRuntime::removeReplicaContainer(int64_t applicationId, int64_t replicaId,
                                             const std::string& containerId) const {
   if (!containerId.empty()) {
-    dockerCode({"rm", "-f", containerId});
+    removeContainer(containerId);
   }
   if (applicationId > 0 && replicaId > 0) {
-    dockerCode({"rm", "-f",
-                "hc-" + std::to_string(applicationId) + "-" + std::to_string(replicaId)});
+    removeContainer("hc-" + std::to_string(applicationId) + "-" + std::to_string(replicaId));
     return;
   }
   if (replicaId <= 0) {
@@ -659,7 +686,7 @@ void DockerRuntime::removeReplicaContainer(int64_t applicationId, int64_t replic
   for (const auto& name : names) {
     int64_t parsed = 0;
     if (replicaIdFromContainerName(name, parsed) && parsed == replicaId) {
-      dockerCode({"rm", "-f", name});
+      removeContainer(name);
     }
   }
 }
@@ -673,7 +700,7 @@ void DockerRuntime::removeUnkeptReplicas(const std::vector<int64_t>& keepReplica
       continue;
     }
     spdlog::info("removing container {} because replica {} is not desired", name, replicaId);
-    dockerCode({"rm", "-f", name});
+    removeContainer(name);
   }
 }
 
@@ -700,7 +727,11 @@ void DockerRuntime::handleRestart(const ::highcube::RestartReplica& order, Statu
   ::highcube::ContainerStatus status;
   status.set_replica_id(order.replica_id());
   status.set_container_id(order.container_id());
-  status.set_status(inspectStatus(order.container_id()));
+  // A restart can hand out another address on the highcube network.
+  if (const std::string ip = highcubeIp(order.container_id()); !ip.empty()) {
+    status.set_container_ip(ip);
+  }
+  status.set_status(waitWhileStarting(order.container_id()));
   status.set_desired_state("running");
   cb(status);
 }
@@ -741,6 +772,28 @@ std::string DockerRuntime::inspectStatus(const std::string& containerId) {
                         containerId});
   while (!health.empty() && (health.back() == '\n' || health.back() == '\r')) {
     health.pop_back();
+  }
+  return health;
+}
+
+std::string DockerRuntime::highcubeIp(const std::string& containerId) const {
+  // nginx (on the admin host) proxies public hostnames to this IP, so no host port
+  // needs to be published.
+  std::string ip = docker({"inspect", "--format",
+                           "{{with index .NetworkSettings.Networks \"highcube\"}}{{.IPAddress}}{{end}}",
+                           containerId});
+  while (!ip.empty() && (ip.back() == '\n' || ip.back() == '\r' || ip.back() == ' ')) {
+    ip.pop_back();
+  }
+  return ip;
+}
+
+std::string DockerRuntime::waitWhileStarting(const std::string& containerId) {
+  // 30s interval + 3 retries of up to 5s each; 150s also covers a slow first start.
+  std::string health = inspectStatus(containerId);
+  for (int i = 0; i < 75 && health == "starting"; ++i) {
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    health = inspectStatus(containerId);
   }
   return health;
 }

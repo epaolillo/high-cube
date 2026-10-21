@@ -80,6 +80,9 @@ public:
   std::optional<Application> findApplicationById(int64_t id);
   int64_t createApplication(const Application& app);
   void updateApplication(const Application& app);
+  void updateApplicationEnv(int64_t id, const std::string& envJson);
+  void updateHealthCheckCommand(int64_t id, const std::string& command);
+  void setPendingRedeploy(int64_t id, bool pending);
   void deleteApplication(int64_t id);
   void setTlsStatus(int64_t id, const std::string& status);
   void setDeployKey(int64_t id, const std::string& pub, const std::string& priv);

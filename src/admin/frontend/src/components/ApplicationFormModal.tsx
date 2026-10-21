@@ -2,6 +2,7 @@ import { Button, Form, Input, InputNumber, Modal, Select, Space, Tabs, Typograph
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
+import { DATABASE_FLAVORS, flavorForImage } from '../data/databaseFlavors';
 import { AppImageEntry, AppImagePicker } from './AppImagePicker';
 import { APP_CATEGORIES } from './appCategories';
 import { DockerfileExposeHint } from './DockerfileExposeHint';
@@ -106,6 +107,8 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
     const fill = (value: string) => value.split('{{secret}}').join(password);
     form.setFieldsValue({
       name: form.getFieldValue('name') || entry.name,
+      type: entry.group === 'database' ? 'db' : form.getFieldValue('type'),
+      databaseFlavor: flavorForImage(entry.id),
       image: entry.image,
       portsExposes: entry.port,
       desiredReplicas: 1,
@@ -135,7 +138,7 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
       values.portsExposes = 80;
     }
     const filledHostnames = hostnameRows.filter((row) => row.subdomain || row.baseDomainId);
-    if (filledHostnames.some((row) => !row.subdomain || !row.baseDomainId)) {
+    if (filledHostnames.some((row) => !row.baseDomainId)) {
       message.error(t('hostnameRequired'));
       return;
     }
@@ -162,6 +165,7 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
       );
     }
     delete values.envText;
+    values.databaseFlavor = values.databaseFlavor || '';
     if (createTab !== 'image') {
       delete values.image;
       delete values.healthCheckType;
@@ -209,10 +213,21 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
           healthCheckType: 'none',
           healthCheckCommand: '',
           image: '',
+          databaseFlavor: '',
         }}
       >
         <Form.Item name="name" label={t('name')} rules={[{ required: true }]}>
           <Input />
+        </Form.Item>
+        <Form.Item name="databaseFlavor" label={t('databaseFlavor')} extra={t('databaseFlavorHint')}>
+          <Select
+            allowClear
+            placeholder={t('databaseFlavorNone')}
+            options={DATABASE_FLAVORS.map((flavor) => ({
+              value: flavor.id,
+              label: t(flavor.labelKey),
+            }))}
+          />
         </Form.Item>
         <Form.Item name="type" label={t('category')}>
           <Select

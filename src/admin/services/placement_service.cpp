@@ -6,6 +6,10 @@
 namespace highcube::admin {
 namespace {
 
+// A deployment that fails to build/start this many times is abandoned instead of
+// being relaunched forever. A successful rollout resets the counter.
+constexpr int kMaxDeployAttempts = 3;
+
 bool countsTowardScale(const Replica& replica) {
   if (replica.desiredState != "running") {
     return false;
@@ -169,7 +173,23 @@ void PlacementService::converge(int64_t applicationId) {
 
   const auto deploymentId = pickDeploymentId(*ctx_.repos, applicationId);
 
-  while (running < app->desiredReplicas) {
+  // Stop relaunching a deployment that keeps failing to build or start. Without this
+  // cap the supervisor would recreate the replica every cycle and loop forever on a
+  // broken build (e.g. a Dockerfile that no longer compiles).
+  bool deployExhausted = false;
+  if (deploymentId) {
+    auto deployment = ctx_.repos->findDeploymentById(*deploymentId);
+    if (deployment && deployment->status != "success" &&
+        deployment->deployAttempts >= kMaxDeployAttempts) {
+      deployExhausted = true;
+      if (deployment->status != "failed") {
+        deployment->status = "failed";
+        ctx_.repos->updateDeployment(*deployment);
+      }
+    }
+  }
+
+  while (!deployExhausted && running < app->desiredReplicas) {
     if (!deploymentId) {
       break;
     }

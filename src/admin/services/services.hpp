@@ -119,6 +119,24 @@ private:
   AppContext& ctx_;
 };
 
+// True when flavor is one of the supported MySQL or PostgreSQL versions.
+bool isKnownDatabaseFlavor(const std::string& flavor);
+// "mysql" or "postgres" for a known flavor, otherwise empty.
+std::string databaseFlavorEngine(const std::string& flavor);
+// Engine derived from application.databaseFlavor.
+std::string managedDatabaseEngine(const Application& app);
+
+class DatabaseAdminService {
+public:
+  explicit DatabaseAdminService(AppContext& ctx);
+  // Starts an agent round-trip. The caller polls the returned request id.
+  nlohmann::json start(int64_t applicationId, const nlohmann::json& body, const User& actor);
+  nlohmann::json poll(int64_t applicationId, const std::string& requestId, const User& actor);
+
+private:
+  AppContext& ctx_;
+};
+
 class ApplicationService {
 public:
   explicit ApplicationService(AppContext& ctx);

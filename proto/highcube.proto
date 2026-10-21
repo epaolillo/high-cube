@@ -25,6 +25,7 @@ enum MessageKind {
   RECONCILE_REPLICAS = 11;
   RENAME_VOLUME = 12;
   CHECK_HOST_PORT = 13;
+  DB_MANAGE = 14;
 
   // Agent -> Admin
   REGISTER = 100;
@@ -37,6 +38,7 @@ enum MessageKind {
   COMMAND_RESULT = 107;
   DEPLOYMENT_LOG = 108;
   HOST_PORT_RESULT = 109;
+  DB_MANAGE_RESULT = 110;
 }
 
 message VolumeSpec {
@@ -203,4 +205,20 @@ message CommandResult {
   string correlation_id = 1;
   bool ok = 2;
   string message = 3;
+}
+
+// Admin -> Agent: run a structured MySQL or PostgreSQL administration operation
+// inside a database container. payload_json is an operation, never raw SQL from the browser.
+message DbManage {
+  string correlation_id = 1;
+  string container_id = 2;
+  string payload_json = 3;
+}
+
+// Agent -> Admin: reply to DbManage.
+message DbManageResult {
+  string correlation_id = 1;
+  bool ok = 2;
+  string error = 3;
+  string payload_json = 4;
 }

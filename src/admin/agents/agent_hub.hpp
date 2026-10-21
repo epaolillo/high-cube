@@ -68,6 +68,23 @@ public:
   std::string startHostPortCheck(int port, const std::vector<int64_t>& serverIds);
   PortCheckState pollHostPortCheck(const std::string& batchId);
 
+  // Side effects applied on the admin once the agent reports success.
+  // newPassword is kept only until the stored environment is updated.
+  struct DbManageEffect {
+    int64_t applicationId = 0;
+    std::string passwordEnvKey;
+    std::string newPassword;
+    std::string healthCommand;
+  };
+  struct DbManagePoll {
+    std::string status;  // pending | ok | error | timeout | unknown
+    std::string error;
+    std::string resultJson;
+  };
+  std::string startDbManage(int64_t serverId, int64_t applicationId, const std::string& containerId,
+                            const std::string& payloadJson, const DbManageEffect& effect);
+  DbManagePoll pollDbManage(const std::string& requestId, int64_t applicationId);
+
 private:
   void onMessage(AgentSession::Pointer session, const ::highcube::Envelope& envelope);
   void handleRegister(AgentSession::Pointer session, const ::highcube::Register& msg);
@@ -76,6 +93,8 @@ private:
   void handleContainerStatus(AgentSession::Pointer session, const ::highcube::ContainerStatus& msg);
   void handleContainerMetrics(AgentSession::Pointer session, const ::highcube::ContainerMetrics& msg);
   void handleHostPortResult(const ::highcube::HostPortResult& msg);
+  void handleDbManageResult(const ::highcube::DbManageResult& msg);
+  void applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson);
   void handleDeploymentLog(const ::highcube::DeploymentLog& msg);
   void onAgentUpgrade(tcp::socket socket, http::request<http::string_body> req);
   void onHostTerminal(tcp::socket socket, http::request<http::string_body> req, int64_t serverId);
@@ -108,6 +127,19 @@ private:
   std::unordered_map<std::string, PortCheckEntry> portChecks_;
   std::unordered_map<std::string, std::vector<std::string>> portCheckBatches_;
   std::atomic<std::uint64_t> portCheckSeq_{0};
+
+  struct DbManageEntry {
+    int64_t applicationId = 0;
+    bool done = false;
+    bool ok = false;
+    std::string error;
+    std::string resultJson;
+    DbManageEffect effect;
+    bool effectApplied = false;
+    std::chrono::steady_clock::time_point createdAt;
+  };
+  std::unordered_map<std::string, DbManageEntry> dbManage_;
+  std::atomic<std::uint64_t> dbManageSeq_{0};
 };
 
 }  // namespace highcube::admin
