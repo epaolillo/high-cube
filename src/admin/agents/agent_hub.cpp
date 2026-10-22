@@ -817,13 +817,16 @@ void AgentHub::handleDeploymentLog(const ::highcube::DeploymentLog& msg) {
 
 void AgentHub::onSessionClosed(AgentSession::Pointer session) {
   std::vector<std::function<void()>> closers;
+  bool wasActive = false;
   {
     std::lock_guard lock(mutex_);
     if (session->serverId() != 0) {
       auto it = sessionsByServer_.find(session->serverId());
+      // A session already replaced by a reconnect must not take the server offline.
       if (it != sessionsByServer_.end() && it->second == session) {
         sessionsByServer_.erase(it);
         containerRounds_.erase(session->serverId());
+        wasActive = true;
       }
     }
     for (auto it = terminals_.begin(); it != terminals_.end();) {
@@ -839,6 +842,14 @@ void AgentHub::onSessionClosed(AgentSession::Pointer session) {
   }
   for (auto& close : closers) {
     close();
+  }
+  if (wasActive) {
+    spdlog::warn("agent disconnected: {} ({})", session->serverName(), session->serverId());
+    try {
+      repos_.setServerStatus(session->serverId(), "offline");
+    } catch (const std::exception& ex) {
+      spdlog::error("failed to mark server {} offline: {}", session->serverId(), ex.what());
+    }
   }
 }
 
@@ -1112,7 +1123,7 @@ void AgentHub::checkOfflineServers() {
     if (now - last > std::chrono::seconds{180}) {
       if (server.status != "offline") {
         spdlog::warn("server {} went offline", server.name);
-        repos_.touchServer(server.id, "offline");
+        repos_.setServerStatus(server.id, "offline");
         // Volume-backed apps stay put; non-volume replicas are reconverged by PlacementService callers.
       }
     }

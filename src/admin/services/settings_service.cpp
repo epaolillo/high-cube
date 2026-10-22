@@ -18,6 +18,14 @@ nlohmann::json SettingsService::listBaseDomains(const ListQuery& query) {
   return {{"rows", rows}, {"total", page.total}};
 }
 
+nlohmann::json SettingsService::listBaseDomainsUsedByUserApplications(int64_t userId) {
+  nlohmann::json rows = nlohmann::json::array();
+  for (const auto& d : ctx_.repos->listBaseDomainsUsedByUserApplications(userId)) {
+    rows.push_back({{"id", d.id}, {"hostname", d.hostname}});
+  }
+  return {{"rows", rows}, {"total", rows.size()}};
+}
+
 nlohmann::json SettingsService::createBaseDomain(const nlohmann::json& body, const User& actor) {
   BaseDomain domain;
   domain.hostname = body.at("hostname").get<std::string>();

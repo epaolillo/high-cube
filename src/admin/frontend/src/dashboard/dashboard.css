@@ -242,6 +242,18 @@
   display: flex;
 }
 
+/* Rows the current role can see but not act on. */
+.hc-row--muted:hover {
+  background: transparent;
+}
+.hc-row--muted .hc-row__name,
+.hc-row--muted .hc-row__sub {
+  color: #a3acb9;
+}
+.hc-row--muted .hc-row__check {
+  cursor: not-allowed;
+}
+
 .hc-dot {
   flex: 0 0 auto;
   width: 8px;
@@ -374,6 +386,16 @@
 .hc-row__check {
   flex: 0 0 auto;
   display: inline-flex;
+}
+
+/* Per-server filter toggle: pushed to the right edge of the row, brand-accented. */
+.hc-row__filter {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #635bff;
 }
 
 /* Bulk action bar, shown while rows are selected. */

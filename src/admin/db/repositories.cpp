@@ -429,6 +429,22 @@ std::vector<BaseDomain> Repositories::listBaseDomainsForUser(int64_t userId) {
   return rows;
 }
 
+std::vector<BaseDomain> Repositories::listBaseDomainsUsedByUserApplications(int64_t userId) {
+  std::vector<BaseDomain> rows;
+  SQLite::Statement st(
+      database_.db(),
+      "SELECT id,hostname,COALESCE(created_by,0) FROM base_domains WHERE id IN ("
+      "SELECT ah.base_domain_id FROM application_hostnames ah "
+      "INNER JOIN applications a ON a.id=ah.application_id WHERE a.created_by=?) "
+      "ORDER BY hostname ASC");
+  st.bind(1, userId);
+  while (st.executeStep()) {
+    rows.push_back(BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(),
+                              st.getColumn(2).getInt64()});
+  }
+  return rows;
+}
+
 bool Repositories::userHasBaseDomain(int64_t userId, int64_t domainId) {
   SQLite::Statement st(database_.db(),
                        "SELECT 1 FROM user_base_domains WHERE user_id=? AND base_domain_id=?");
@@ -561,6 +577,17 @@ void Repositories::touchServer(int64_t id, const std::string& status) {
   st.exec();
 }
 
+void Repositories::setServerStatus(int64_t id, const std::string& status) {
+  SQLite::Statement st(database_.db(), "UPDATE servers SET status=? WHERE id=?");
+  st.bind(1, status);
+  st.bind(2, id);
+  st.exec();
+}
+
+void Repositories::markOnlineServersOffline() {
+  database_.db().exec("UPDATE servers SET status='offline' WHERE status='online'");
+}
+
 void Repositories::deleteServer(int64_t id) {
   SQLite::Transaction tx(database_.db());
   // replicas.server_id has no ON DELETE CASCADE, so children must go first.
@@ -581,6 +608,28 @@ std::vector<Server> Repositories::autocompleteServers(const std::string& q) {
   const std::string like = "%" + q + "%";
   st.bind(1, like);
   st.bind(2, like);
+  while (st.executeStep()) {
+    Server s;
+    s.id = st.getColumn(0).getInt64();
+    s.name = st.getColumn(1).getString();
+    s.ip = st.getColumn(2).getString();
+    s.agentTokenHash = st.getColumn(3).getString();
+    s.lastSeenAt = st.getColumn(4).getString();
+    s.status = st.getColumn(5).getString();
+    rows.push_back(s);
+  }
+  return rows;
+}
+
+std::vector<Server> Repositories::listServersHostingUserApplications(int64_t userId) {
+  std::vector<Server> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status "
+                       "FROM servers WHERE id IN ("
+                       "SELECT r.server_id FROM replicas r "
+                       "INNER JOIN applications a ON a.id=r.application_id WHERE a.created_by=?) "
+                       "ORDER BY name ASC");
+  st.bind(1, userId);
   while (st.executeStep()) {
     Server s;
     s.id = st.getColumn(0).getInt64();

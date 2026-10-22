@@ -80,6 +80,8 @@ int main(int argc, char** argv) {
     ctx.certbot = std::make_unique<CertbotService>(config, *ctx.repos, *ctx.proxy);
 
     net::io_context ioc{1};
+    // Agent sessions live in memory, so no server is connected until its agent registers again.
+    ctx.repos->markOnlineServersOffline();
     ctx.agentHub = std::make_shared<AgentHub>(ioc, *ctx.repos);
     ctx.agentHub->setAuth(ctx.auth.get());
     ctx.presence = std::make_shared<PresenceHub>(ioc, *ctx.repos, *ctx.auth);

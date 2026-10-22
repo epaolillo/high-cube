@@ -18,6 +18,7 @@ import { HostnamePills } from '../components/HostnamePills';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
 import { useDashboardState } from './DashboardState';
+import { useServerFilter } from './ServerFilter';
 
 type AppRow = {
   id: number;
@@ -50,7 +51,14 @@ export function ApplicationsSector({
 }) {
   const { t } = useTranslation();
   const { data, refresh, setApplicationsParams } = useDashboardState();
+  const { isOn } = useServerFilter();
   const rows = data.applications.rows as AppRow[];
+  // Client-side server filter: show an application when it has no server, or when at least one
+  // of its servers is checked in the Servers column.
+  const visibleRows = rows.filter((a) => {
+    const servers = a.servers ?? [];
+    return servers.length === 0 || servers.some((s) => isOn(s.id));
+  });
   const total = data.applications.total;
   const [category, setCategory] = useState<AppCategory>('other');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
@@ -156,10 +164,10 @@ export function ApplicationsSector({
       </div>
 
       <div className="hc-sector__body hc-scroll">
-        {rows.length === 0 ? (
+        {visibleRows.length === 0 ? (
           <div className="hc-sector__empty">—</div>
         ) : (
-          rows.map((a) => {
+          visibleRows.map((a) => {
             const status = a.runtimeStatus ?? 'stopped';
             const hostnames =
               a.hostnames && a.hostnames.length > 0

@@ -232,6 +232,18 @@ nlohmann::json ServerService::list(const ListQuery& query) {
   return {{"rows", rows}, {"total", page.total}};
 }
 
+nlohmann::json ServerService::listHostingUserApplications(int64_t userId) {
+  const auto servers = ctx_.repos->listServersHostingUserApplications(userId);
+  nlohmann::json rows = nlohmann::json::array();
+  for (const auto& server : servers) {
+    rows.push_back({{"id", server.id},
+                    {"name", server.name},
+                    {"status", server.status},
+                    {"metrics", snapshot(server.id)}});
+  }
+  return {{"rows", rows}, {"total", rows.size()}};
+}
+
 nlohmann::json ServerService::get(int64_t id) {
   auto server = ctx_.repos->findServerById(id);
   if (!server) {

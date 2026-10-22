@@ -34,6 +34,8 @@ public:
   std::vector<int64_t> getUserBaseDomains(int64_t userId);
   void setUserBaseDomains(int64_t userId, const std::vector<int64_t>& domainIds);
   std::vector<BaseDomain> listBaseDomainsForUser(int64_t userId);
+  // Base domains carrying at least one hostname of an application created by this user.
+  std::vector<BaseDomain> listBaseDomainsUsedByUserApplications(int64_t userId);
   bool userHasBaseDomain(int64_t userId, int64_t domainId);
 
   // Servers
@@ -44,9 +46,14 @@ public:
   int64_t createServer(const Server& server);
   void updateServer(const Server& server);
   void touchServer(int64_t id, const std::string& status);
+  // Changes the status only; last_seen_at keeps the last agent contact.
+  void setServerStatus(int64_t id, const std::string& status);
+  void markOnlineServersOffline();
   void deleteServer(int64_t id);
   std::vector<Server> autocompleteServers(const std::string& q);
   std::vector<Server> listHealthyServers();
+  // Servers running at least one replica of an application created by this user.
+  std::vector<Server> listServersHostingUserApplications(int64_t userId);
 
   // Settings / base domains
   std::string getSetting(const std::string& key, const std::string& fallback = "");

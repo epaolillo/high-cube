@@ -7,6 +7,7 @@ import { confirmDestructive } from '../components/confirmDestructive';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { MetricDisplay } from '../components/MetricDisplay';
 import { useDashboardState } from './DashboardState';
+import { useServerFilter } from './ServerFilter';
 
 type ServerMetrics = {
   cpuPercent?: number;
@@ -23,7 +24,7 @@ type ServerMetrics = {
 type ServerRow = {
   id: number;
   name: string;
-  ip: string;
+  ip?: string;
   status: string;
   lastSeenAt?: string;
   metrics?: ServerMetrics;
@@ -44,9 +45,11 @@ function showAgentToken(t: (k: string) => string, token: string) {
   });
 }
 
-export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
+// readOnly is the User role view: status, name and metrics only, with no actions.
+export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean; onOpen: (id: number) => void }) {
   const { t } = useTranslation();
   const { data, refresh, setServersParams } = useDashboardState();
+  const { isOn, toggle: toggleFilter } = useServerFilter();
   const rows = data.servers.rows as ServerRow[];
   const total = data.servers.total;
   const [q, setQ] = useState('');
@@ -119,33 +122,45 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
         <span className="hc-sector__title">{t('servers')}</span>
         <span className="hc-sector__count">{total}</span>
         <span className="hc-sector__spacer" />
-        <button type="button" className="hc-addbtn" onClick={addServer}>
-          <PlusOutlined />
-          {t('create')}
-        </button>
+        {!readOnly && (
+          <button type="button" className="hc-addbtn" onClick={addServer}>
+            <PlusOutlined />
+            {t('create')}
+          </button>
+        )}
       </div>
 
-      <div className="hc-controls">
-        <Input
-          className="hc-search"
-          size="small"
-          allowClear
-          placeholder={t('name')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
+      {!readOnly && (
+        <>
+          <div className="hc-controls">
+            <Input
+              className="hc-search"
+              size="small"
+              allowClear
+              placeholder={t('name')}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
 
-      <div className="hc-bulkbar">
-        <span>{t('selectedCount', { count: sel.size })}</span>
-        <span className="hc-bulkbar__spacer" />
-        <button type="button" className="hc-linkbtn" data-tone="danger" disabled={sel.size === 0} onClick={bulkDelete}>
-          {t('delete')}
-        </button>
-        <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
-          {t('clearSelection')}
-        </button>
-      </div>
+          <div className="hc-bulkbar">
+            <span>{t('selectedCount', { count: sel.size })}</span>
+            <span className="hc-bulkbar__spacer" />
+            <button
+              type="button"
+              className="hc-linkbtn"
+              data-tone="danger"
+              disabled={sel.size === 0}
+              onClick={bulkDelete}
+            >
+              {t('delete')}
+            </button>
+            <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
+              {t('clearSelection')}
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="hc-sector__body hc-scroll">
         {rows.length === 0 ? (
@@ -154,44 +169,59 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
           rows.map((s) => (
             <div className="hc-row" key={s.id}>
               <div className="hc-row__head">
-                <input
-                  type="checkbox"
-                  className="hc-row__check"
-                  checked={sel.has(s.id)}
-                  onChange={() => toggle(s.id)}
-                />
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    className="hc-row__check"
+                    checked={sel.has(s.id)}
+                    onChange={() => toggle(s.id)}
+                  />
+                )}
                 <span className="hc-dot" data-on={s.status === 'online'} />
                 <span className="hc-row__name" title={s.name}>
                   {s.name}
                 </span>
-                <span className="hc-row__sub">{s.ip}</span>
-                <div className="hc-acts">
-                  <Tooltip title={t('edit')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
-                      <EditOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('open')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => onOpen(s.id)}>
-                      <SlidersOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('regenerateToken')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => regenerate(s)}>
-                      <KeyOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('delete')}>
-                    <button
-                      type="button"
-                      className="hc-iconbtn"
-                      data-tone="danger"
-                      onClick={() => void removeOne(s)}
-                    >
-                      <DeleteOutlined />
-                    </button>
-                  </Tooltip>
-                </div>
+                {!readOnly && (
+                  <>
+                    <span className="hc-row__sub">{s.ip}</span>
+                    <div className="hc-acts">
+                      <Tooltip title={t('edit')}>
+                        <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
+                          <EditOutlined />
+                        </button>
+                      </Tooltip>
+                      <Tooltip title={t('open')}>
+                        <button type="button" className="hc-iconbtn" onClick={() => onOpen(s.id)}>
+                          <SlidersOutlined />
+                        </button>
+                      </Tooltip>
+                      <Tooltip title={t('regenerateToken')}>
+                        <button type="button" className="hc-iconbtn" onClick={() => regenerate(s)}>
+                          <KeyOutlined />
+                        </button>
+                      </Tooltip>
+                      <Tooltip title={t('delete')}>
+                        <button
+                          type="button"
+                          className="hc-iconbtn"
+                          data-tone="danger"
+                          onClick={() => void removeOne(s)}
+                        >
+                          <DeleteOutlined />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  </>
+                )}
+                <Tooltip title={t('filterByServer')}>
+                  <input
+                    type="checkbox"
+                    className="hc-row__filter"
+                    checked={isOn(s.id)}
+                    onChange={() => toggleFilter(s.id)}
+                    aria-label={t('filterByServer')}
+                  />
+                </Tooltip>
               </div>
               <div className="hc-row__metric">
                 <MetricDisplay

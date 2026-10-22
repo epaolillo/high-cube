@@ -685,7 +685,10 @@ db_path = pathlib.Path(dest) / "data" / "highcube.db"
 conn = sqlite3.connect(db_path)
 conn.row_factory = sqlite3.Row
 token_hash = hashlib.sha256(token.encode()).hexdigest()
-row = conn.execute("SELECT id FROM servers WHERE name=?", (name,)).fetchone()
+# The admin identifies agents by token, and the name may have been changed in the UI.
+row = conn.execute("SELECT id FROM servers WHERE agent_token_hash=?", (token_hash,)).fetchone()
+if row is None:
+    row = conn.execute("SELECT id FROM servers WHERE name=?", (name,)).fetchone()
 if row is None:
     conn.execute(
         "INSERT INTO servers (name, ip, agent_token_hash, status) VALUES (?,?,?,?)",

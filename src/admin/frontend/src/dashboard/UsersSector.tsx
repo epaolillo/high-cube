@@ -15,7 +15,8 @@ import { useDashboardState } from './DashboardState';
 
 type UserRow = { id: number; email: string; name: string; role: string };
 
-export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
+// readOnly is the User role view: only the caller's own row, with no actions.
+export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; onOpen: (id: number) => void }) {
   const { t } = useTranslation();
   const { data, refresh, setUsersParams } = useDashboardState();
   const rows = data.users.rows as UserRow[];
@@ -69,41 +70,53 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
         <span className="hc-sector__title">{t('users')}</span>
         <span className="hc-sector__count">{total}</span>
         <span className="hc-sector__spacer" />
-        <button
-          type="button"
-          className="hc-addbtn"
-          onClick={() => {
-            form.resetFields();
-            setCreateOpen(true);
-          }}
-        >
-          <PlusOutlined />
-          {t('create')}
-        </button>
-      </div>
-
-      <div className="hc-controls">
-        <Tooltip title={order === 'asc' ? 'ASC' : 'DESC'}>
+        {!readOnly && (
           <button
             type="button"
-            className="hc-iconbtn"
-            onClick={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+            className="hc-addbtn"
+            onClick={() => {
+              form.resetFields();
+              setCreateOpen(true);
+            }}
           >
-            {order === 'asc' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+            <PlusOutlined />
+            {t('create')}
           </button>
-        </Tooltip>
+        )}
       </div>
 
-      <div className="hc-bulkbar">
-        <span>{t('selectedCount', { count: sel.size })}</span>
-        <span className="hc-bulkbar__spacer" />
-        <button type="button" className="hc-linkbtn" data-tone="danger" disabled={sel.size === 0} onClick={bulkDelete}>
-          {t('delete')}
-        </button>
-        <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
-          {t('clearSelection')}
-        </button>
-      </div>
+      {!readOnly && (
+        <>
+          <div className="hc-controls">
+            <Tooltip title={order === 'asc' ? 'ASC' : 'DESC'}>
+              <button
+                type="button"
+                className="hc-iconbtn"
+                onClick={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+              >
+                {order === 'asc' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+              </button>
+            </Tooltip>
+          </div>
+
+          <div className="hc-bulkbar">
+            <span>{t('selectedCount', { count: sel.size })}</span>
+            <span className="hc-bulkbar__spacer" />
+            <button
+              type="button"
+              className="hc-linkbtn"
+              data-tone="danger"
+              disabled={sel.size === 0}
+              onClick={bulkDelete}
+            >
+              {t('delete')}
+            </button>
+            <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
+              {t('clearSelection')}
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="hc-sector__body hc-scroll">
         {rows.length === 0 ? (
@@ -112,12 +125,14 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
           rows.map((u) => (
             <div className="hc-row" key={u.id}>
               <div className="hc-row__head">
-                <input
-                  type="checkbox"
-                  className="hc-row__check"
-                  checked={sel.has(u.id)}
-                  onChange={() => toggle(u.id)}
-                />
+                {!readOnly && (
+                  <input
+                    type="checkbox"
+                    className="hc-row__check"
+                    checked={sel.has(u.id)}
+                    onChange={() => toggle(u.id)}
+                  />
+                )}
                 <span className="hc-avatar-sq">{(u.name || u.email || 'U').slice(0, 1).toUpperCase()}</span>
                 <span className="hc-row__name" title={u.name || u.email}>
                   {u.name || u.email}
@@ -130,23 +145,25 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
                   />
                 </Tooltip>
                 <Tag style={{ margin: 0 }}>{t(`roles.${u.role}`, { defaultValue: u.role })}</Tag>
-                <div className="hc-acts">
-                  <Tooltip title={t('edit')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => onOpen(u.id)}>
-                      <EditOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('delete')}>
-                    <button
-                      type="button"
-                      className="hc-iconbtn"
-                      data-tone="danger"
-                      onClick={() => void removeOne(u)}
-                    >
-                      <DeleteOutlined />
-                    </button>
-                  </Tooltip>
-                </div>
+                {!readOnly && (
+                  <div className="hc-acts">
+                    <Tooltip title={t('edit')}>
+                      <button type="button" className="hc-iconbtn" onClick={() => onOpen(u.id)}>
+                        <EditOutlined />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title={t('delete')}>
+                      <button
+                        type="button"
+                        className="hc-iconbtn"
+                        data-tone="danger"
+                        onClick={() => void removeOne(u)}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )}
               </div>
             </div>
           ))

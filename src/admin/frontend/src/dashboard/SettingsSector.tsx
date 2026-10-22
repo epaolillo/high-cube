@@ -22,7 +22,8 @@ const REDEPLOY_COLOR: Record<RedeployStatus, string> = {
   error: 'red',
 };
 
-export function SettingsSector() {
+// readOnly is the User role view: the base domains of its own applications, greyed out, no actions.
+export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
   const { data, refresh } = useDashboardState();
   const rows = data.baseDomains.rows as DomainRow[];
@@ -147,85 +148,106 @@ export function SettingsSector() {
         <span className="hc-sector__title">{t('settings')}</span>
         <span className="hc-sector__count">{total}</span>
         <span className="hc-sector__spacer" />
-        <button type="button" className="hc-ghostbtn" onClick={startRedeployAll}>
-          <RocketOutlined />
-          {t('redeployAllShort')}
-        </button>
-        <button
-          type="button"
-          className="hc-addbtn"
-          onClick={() => {
-            domainForm.resetFields();
-            setDomainOpen(true);
-          }}
-        >
-          <PlusOutlined />
-          {t('baseDomainsShort')}
-        </button>
+        {!readOnly && (
+          <>
+            <button type="button" className="hc-ghostbtn" onClick={startRedeployAll}>
+              <RocketOutlined />
+              {t('redeployAllShort')}
+            </button>
+            <button
+              type="button"
+              className="hc-addbtn"
+              onClick={() => {
+                domainForm.resetFields();
+                setDomainOpen(true);
+              }}
+            >
+              <PlusOutlined />
+              {t('baseDomainsShort')}
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Metrics retention */}
-      <div className="hc-row">
-        <div className="hc-row__head">
-          <div className="hc-readout">
-            <b>{ttl ?? '—'}</b>
-            <span>{t('metricsTtl')}</span>
-          </div>
-          <span className="hc-sector__spacer" />
-          <div className="hc-acts">
-            <Tooltip title={t('edit')}>
-              <button
-                type="button"
-                className="hc-iconbtn"
-                onClick={() => setMetricsModal({ ttl: ttl ?? 7 })}
-              >
-                <EditOutlined />
-              </button>
-            </Tooltip>
-          </div>
-        </div>
-      </div>
-
-      <div className="hc-bulkbar">
-        <span>{t('selectedCount', { count: sel.size })}</span>
-        <span className="hc-bulkbar__spacer" />
-        <button type="button" className="hc-linkbtn" data-tone="danger" disabled={sel.size === 0} onClick={bulkDelete}>
-          {t('delete')}
-        </button>
-        <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
-          {t('clearSelection')}
-        </button>
-      </div>
-
-      <div className="hc-sector__body hc-scroll">
-        {rows.map((d) => (
-          <div className="hc-row" key={d.id}>
+      {!readOnly && (
+        <>
+          {/* Metrics retention */}
+          <div className="hc-row">
             <div className="hc-row__head">
-              <input
-                type="checkbox"
-                className="hc-row__check"
-                checked={sel.has(d.id)}
-                onChange={() => toggle(d.id)}
-              />
-              <span className="hc-row__name" title={d.hostname}>
-                {d.hostname}
-              </span>
-              <span className="hc-row__sub">{t('baseDomain')}</span>
+              <div className="hc-readout">
+                <b>{ttl ?? '—'}</b>
+                <span>{t('metricsTtl')}</span>
+              </div>
+              <span className="hc-sector__spacer" />
               <div className="hc-acts">
-                <Tooltip title={t('delete')}>
+                <Tooltip title={t('edit')}>
                   <button
                     type="button"
                     className="hc-iconbtn"
-                    data-tone="danger"
-                    onClick={() => void removeDomain(d)}
+                    onClick={() => setMetricsModal({ ttl: ttl ?? 7 })}
                   >
-                    <DeleteOutlined />
+                    <EditOutlined />
                   </button>
                 </Tooltip>
               </div>
             </div>
           </div>
-        ))}
+
+          <div className="hc-bulkbar">
+            <span>{t('selectedCount', { count: sel.size })}</span>
+            <span className="hc-bulkbar__spacer" />
+            <button
+              type="button"
+              className="hc-linkbtn"
+              data-tone="danger"
+              disabled={sel.size === 0}
+              onClick={bulkDelete}
+            >
+              {t('delete')}
+            </button>
+            <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
+              {t('clearSelection')}
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="hc-sector__body hc-scroll">
+        {rows.length === 0 ? (
+          <div className="hc-sector__empty">—</div>
+        ) : (
+          rows.map((d) => (
+            <div className={readOnly ? 'hc-row hc-row--muted' : 'hc-row'} key={d.id}>
+              <div className="hc-row__head">
+                <input
+                  type="checkbox"
+                  className="hc-row__check"
+                  disabled={readOnly}
+                  checked={sel.has(d.id)}
+                  onChange={() => toggle(d.id)}
+                />
+                <span className="hc-row__name" title={d.hostname}>
+                  {d.hostname}
+                </span>
+                <span className="hc-row__sub">{t('baseDomain')}</span>
+                {!readOnly && (
+                  <div className="hc-acts">
+                    <Tooltip title={t('delete')}>
+                      <button
+                        type="button"
+                        className="hc-iconbtn"
+                        data-tone="danger"
+                        onClick={() => void removeDomain(d)}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </Tooltip>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <Modal

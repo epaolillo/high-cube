@@ -28,6 +28,15 @@ nlohmann::json StateService::dashboard(const ListQuery& servers, const ListQuery
   nlohmann::json body;
   body["applications"] = ApplicationService(ctx_).list(applications, actor);
   if (!ctx_.auth->isAdmin(actor)) {
+    // Read-only slices scoped to the caller; metrics retention and other users stay hidden.
+    body["servers"] = ServerService(ctx_).listHostingUserApplications(actor.id);
+    body["baseDomains"] = SettingsService(ctx_).listBaseDomainsUsedByUserApplications(actor.id);
+    body["users"] = {{"rows", nlohmann::json::array({userToJson(actor)})}, {"total", 1}};
+    nlohmann::json self = nlohmann::json::array();
+    if (ctx_.presence && ctx_.presence->isOnline(actor.id)) {
+      self.push_back(actor.id);
+    }
+    body["onlineUserIds"] = std::move(self);
     return body;
   }
 

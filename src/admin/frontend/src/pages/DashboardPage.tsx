@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { connectPresence } from '../presence/presenceClient';
 import { ApplicationsSector } from '../dashboard/ApplicationsSector';
 import { DashboardStateProvider } from '../dashboard/DashboardState';
+import { ServerFilterProvider } from '../dashboard/ServerFilter';
 import { ServersSector } from '../dashboard/ServersSector';
 import { SettingsSector } from '../dashboard/SettingsSector';
 import { UsersSector } from '../dashboard/UsersSector';
@@ -49,6 +50,7 @@ export default function DashboardPage() {
 
   return (
     <DashboardStateProvider>
+      <ServerFilterProvider>
       <div className="hc-dash">
         <div className="hc-dash__bar">
           <div className="hc-dash__brand">
@@ -74,14 +76,14 @@ export default function DashboardPage() {
         </div>
 
         <div className="hc-dash__board hc-scroll">
-          {isAdmin && <ServersSector onOpen={(id) => setDrawer({ kind: 'server', id })} />}
+          <ServersSector readOnly={!isAdmin} onOpen={(id) => setDrawer({ kind: 'server', id })} />
           <ApplicationsSector
             isAdmin={isAdmin}
             onOpen={(id) => setDrawer({ kind: 'app', id })}
             onOpenIntegrations={() => setDrawer({ kind: 'integrations' })}
           />
-          {isAdmin && <SettingsSector />}
-          {isAdmin && <UsersSector onOpen={(id) => setDrawer({ kind: 'user', id })} />}
+          <SettingsSector readOnly={!isAdmin} />
+          <UsersSector readOnly={!isAdmin} onOpen={(id) => setDrawer({ kind: 'user', id })} />
         </div>
 
         <Drawer
@@ -99,6 +101,7 @@ export default function DashboardPage() {
           {drawer?.kind === 'integrations' && <IntegrationsPage />}
         </Drawer>
       </div>
+      </ServerFilterProvider>
     </DashboardStateProvider>
   );
 }
