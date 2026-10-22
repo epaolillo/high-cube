@@ -38,6 +38,7 @@ import { AppIcon, IconEditor } from '../components/IconEditor';
 import { APP_CATEGORIES } from '../components/appCategories';
 import { DATABASE_FLAVORS } from '../data/databaseFlavors';
 import { BaseDomainOption, HostnameFields, HostnameRow } from '../components/HostnameFields';
+import { suggestHostPath, VolumeFields } from '../components/VolumeFields';
 import { connectTerminalTarget, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
 
@@ -103,7 +104,7 @@ type Application = {
   dbEngine?: 'mysql' | 'postgres' | null;
   internalEndpoint?: string;
   env?: Record<string, string>;
-  volumes?: { id: number; name: string; mountPath: string }[];
+  volumes?: { id: number; name: string; mountPath: string; hostPath?: string }[];
   createdBy?: number;
   ownerEmail?: string;
 };
@@ -135,9 +136,13 @@ type Replica = {
 type VolumeRow = {
   id: number;
   name: string;
+  // Directory inside the container.
   mountPath: string;
+  // Relative to /var/lib/data; empty when Docker manages the data.
+  hostPath?: string;
+  // Absolute host directory to display.
+  hostDirectory?: string | null;
   dockerName?: string;
-  hostPath?: string | null;
   sizeBytes?: number | null;
   serverId?: number | null;
 };
@@ -1100,7 +1105,14 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           </Typography.Title>
           <Button
             onClick={() => {
-              volumeForm.setFieldsValue({ name: 'data', mountPath: '' });
+              const names = new Set(volumes.map((row) => row.name));
+              let name = 'data';
+              for (let n = 2; names.has(name); n += 1) name = `data${n}`;
+              volumeForm.setFieldsValue({
+                name,
+                hostPath: suggestHostPath(app.name, name),
+                mountPath: '',
+              });
               setVolumeModal({ mode: 'create' });
             }}
           >
@@ -1119,8 +1131,22 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
             dataSource={volumes}
             columns={[
               { title: t('name'), dataIndex: 'name' },
-              { title: t('volumeHostPath'), dataIndex: 'hostPath', render: (v) => v || '—' },
-              { title: t('volumeMountPath'), dataIndex: 'mountPath' },
+              {
+                title: t('volumeHostDirectory'),
+                dataIndex: 'hostDirectory',
+                render: (v, row) =>
+                  row.hostPath ? (
+                    v
+                  ) : (
+                    <Tooltip title={t('volumeDockerManagedHint')}>
+                      <Space size={4} wrap>
+                        <Tag>{t('volumeDockerManaged')}</Tag>
+                        {v || null}
+                      </Space>
+                    </Tooltip>
+                  ),
+              },
+              { title: t('volumeContainerDirectory'), dataIndex: 'mountPath' },
               {
                 title: t('volumeSize'),
                 dataIndex: 'sizeBytes',
@@ -1146,7 +1172,9 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                       onClick={async () => {
                         const ok = await confirmDestructive(t, {
                           title: t('deleteVolume'),
-                          text: t('confirmDeleteVolume'),
+                          text: row.hostPath
+                            ? t('confirmDeleteVolumeDirectory', { directory: row.hostDirectory })
+                            : t('confirmDeleteVolume'),
                           confirmText: t('deleteVolume'),
                         });
                         if (!ok) return;
@@ -1171,7 +1199,10 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           onOk={async () => {
             const values = await volumeForm.validateFields();
             if (volumeModal?.mode === 'edit' && volumeModal.volume) {
-              await api.patch(`/applications/${id}/volumes/${volumeModal.volume.id}`, values);
+              await api.patch(`/applications/${id}/volumes/${volumeModal.volume.id}`, {
+                name: values.name,
+                mountPath: values.mountPath,
+              });
               message.success(t('volumeUpdated'));
             } else {
               await api.post(`/applications/${id}/volumes`, values);
@@ -1183,16 +1214,16 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           }}
         >
           <Form form={volumeForm} layout="vertical" style={{ marginTop: 12 }}>
-            <Form.Item
-              name="name"
-              label={t('volumeName')}
-              rules={[{ required: true }, { pattern: /^[A-Za-z0-9._-]+$/, message: t('volumeName') }]}
-            >
-              <Input placeholder="data" />
-            </Form.Item>
-            <Form.Item name="mountPath" label={t('volumeMountPath')} rules={[{ required: true }]}>
-              <Input placeholder="/var/lib/data" />
-            </Form.Item>
+            <VolumeFields
+              saved={volumeModal?.mode === 'edit'}
+              savedHostDirectory={volumeModal?.volume?.hostPath ? volumeModal.volume.hostDirectory : null}
+              otherHostPaths={() =>
+                volumes
+                  .filter((row) => row.id !== volumeModal?.volume?.id)
+                  .map((row) => row.hostPath || '')
+                  .filter(Boolean)
+              }
+            />
           </Form>
         </Modal>
       </div>

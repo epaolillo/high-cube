@@ -34,6 +34,45 @@ std::unordered_map<std::string, VolumeCacheEntry> volumeCache;
 // Databases need time to flush and close their files; SIGKILL can leave MyISAM tables crashed.
 constexpr int kVolumeStopTimeoutSeconds = 120;
 
+// Volume host directories are only ever created, bound or deleted under this root.
+constexpr const char* kVolumesRoot = "/var/lib/data";
+// The agent is not root, so host directories are created and removed from this image.
+constexpr const char* kVolumesHelperImage = "alpine";
+
+std::string applicationVolumeName(int64_t applicationId, const std::string& name) {
+  return "highcube-" + std::to_string(applicationId) + "-" + name;
+}
+
+// Segments are [A-Za-z0-9][A-Za-z0-9._-]*, which refuses "..", absolute and empty paths.
+bool isSafeVolumeHostPath(const std::string& hostPath) {
+  if (hostPath.empty() || hostPath.size() > 255) {
+    return false;
+  }
+  std::size_t start = 0;
+  while (true) {
+    const auto end = hostPath.find('/', start);
+    const std::string segment =
+        hostPath.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    if (segment.empty() || segment.size() > 64 ||
+        !std::isalnum(static_cast<unsigned char>(segment.front()))) {
+      return false;
+    }
+    for (unsigned char c : segment) {
+      if (!std::isalnum(c) && c != '.' && c != '_' && c != '-') {
+        return false;
+      }
+    }
+    if (end == std::string::npos) {
+      return true;
+    }
+    start = end + 1;
+  }
+}
+
+std::string volumeHostDirectory(const std::string& hostPath) {
+  return std::string(kVolumesRoot) + "/" + hostPath;
+}
+
 double parsePercent(const std::string& value) {
   try {
     return std::stod(value);
@@ -329,6 +368,53 @@ void DockerRuntime::removeContainer(const std::string& container) const {
   dockerCode({"rm", "-f", container});
 }
 
+std::optional<std::string> DockerRuntime::volumeDevice(const std::string& volumeName) const {
+  if (dockerCode({"volume", "inspect", volumeName}) != 0) {
+    return std::nullopt;
+  }
+  std::string device = trimRight(
+      docker({"volume", "inspect", "--format", "{{index .Options \"device\"}}", volumeName}));
+  if (device == "<no value>") {
+    device.clear();
+  }
+  return device;
+}
+
+int DockerRuntime::runVolumesHelper(const std::vector<std::string>& command) const {
+  std::vector<std::string> args = {"run",  "--rm", "--network", "none", "-v",
+                                   std::string(kVolumesRoot) + ":/hc-data", kVolumesHelperImage};
+  args.insert(args.end(), command.begin(), command.end());
+  return dockerCode(args);
+}
+
+void DockerRuntime::ensureBoundVolume(const std::string& volumeName,
+                                      const std::string& hostPath) const {
+  if (!isSafeVolumeHostPath(hostPath)) {
+    throw std::runtime_error("refusing volume host directory outside " +
+                             std::string(kVolumesRoot) + ": " + hostPath);
+  }
+  const std::string directory = volumeHostDirectory(hostPath);
+  if (const auto device = volumeDevice(volumeName)) {
+    if (*device == directory) {
+      return;
+    }
+    throw std::runtime_error("Docker volume " + volumeName + " already exists on this server " +
+                             (device->empty() ? "with Docker-managed data"
+                                              : "bound to " + *device) +
+                             ", not to " + directory);
+  }
+  // A named volume (not a plain bind mount) keeps Docker copying the image's files and
+  // ownership into the empty directory on first start.
+  if (runVolumesHelper({"mkdir", "-p", "/hc-data/" + hostPath}) != 0) {
+    throw std::runtime_error("cannot create host directory " + directory);
+  }
+  if (dockerCode({"volume", "create", "--driver", "local", "--opt", "type=none", "--opt", "o=bind",
+                  "--opt", "device=" + directory, volumeName}) != 0) {
+    throw std::runtime_error("cannot create Docker volume " + volumeName + " bound to " +
+                             directory);
+  }
+}
+
 std::string DockerRuntime::docker(const std::vector<std::string>& args) const {
   bp::ipstream out;
   bp::child c(bp::search_path("docker"), bp::args(args), bp::std_out > out,
@@ -452,6 +538,19 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
     const bool hasVolumes = order.volumes_size() > 0;
     const std::string name =
         "hc-" + std::to_string(order.application_id()) + "-" + std::to_string(order.replica_id());
+    // Checked before the previous container goes away, so a wrong binding keeps it running.
+    for (const auto& volume : order.volumes()) {
+      if (volume.host_path().empty()) {
+        continue;
+      }
+      ensureBoundVolume(applicationVolumeName(order.application_id(), volume.name()),
+                        volume.host_path());
+      if (logCb) {
+        logCb("deploy", "Volume " + volume.name() + ": host " +
+                            volumeHostDirectory(volume.host_path()) + " -> container " +
+                            volume.mount_path() + "\n");
+      }
+    }
     if (hasVolumes) {
       // A volume app runs a single replica: anything else of this application on this host
       // is the previous generation and must release the volume before the new one starts.
@@ -488,10 +587,9 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       runArgs.push_back(key + "=" + value);
     }
     for (const auto& volume : order.volumes()) {
-      const std::string volName =
-          "highcube-" + std::to_string(order.application_id()) + "-" + volume.name();
       runArgs.push_back("-v");
-      runArgs.push_back(volName + ":" + volume.mount_path());
+      runArgs.push_back(applicationVolumeName(order.application_id(), volume.name()) + ":" +
+                        volume.mount_path());
     }
     if (hasVolumes) {
       // Also honoured when dockerd stops containers on shutdown.
@@ -789,12 +887,49 @@ void DockerRuntime::handleRestart(const ::highcube::RestartReplica& order, Statu
   cb(status);
 }
 
-void DockerRuntime::deleteVolume(const std::string& volumeName) {
-  dockerCode({"volume", "rm", "-f", volumeName});
+void DockerRuntime::deleteVolume(const std::string& volumeName, const std::string& hostPath) {
+  if (hostPath.empty()) {
+    dockerCode({"volume", "rm", "-f", volumeName});
+    return;
+  }
+  if (!isSafeVolumeHostPath(hostPath)) {
+    spdlog::error("refusing to delete volume host directory {}", hostPath);
+    return;
+  }
+  // Every agent receives the order; only the one where Docker bound this volume to the
+  // directory owns those files.
+  const std::string directory = volumeHostDirectory(hostPath);
+  const auto device = volumeDevice(volumeName);
+  if (!device || *device != directory) {
+    return;
+  }
+  if (dockerCode({"volume", "rm", volumeName}) != 0) {
+    spdlog::error("volume {} is still in use; {} was kept", volumeName, directory);
+    return;
+  }
+  if (runVolumesHelper({"rm", "-rf", "/hc-data/" + hostPath}) != 0) {
+    spdlog::error("failed to delete {}", directory);
+  }
 }
 
-void DockerRuntime::renameVolume(const std::string& fromName, const std::string& toName) {
+void DockerRuntime::renameVolume(const std::string& fromName, const std::string& toName,
+                                 const std::string& hostPath) {
   if (fromName.empty() || toName.empty() || fromName == toName) {
+    return;
+  }
+  if (!hostPath.empty()) {
+    // The files stay in the host directory; only the Docker volume bound to it is renamed.
+    if (!isSafeVolumeHostPath(hostPath)) {
+      throw std::runtime_error("refusing volume host directory " + hostPath);
+    }
+    const auto device = volumeDevice(fromName);
+    if (!device || *device != volumeHostDirectory(hostPath)) {
+      return;
+    }
+    if (dockerCode({"volume", "rm", fromName}) != 0) {
+      throw std::runtime_error("volume is still in use: " + fromName);
+    }
+    ensureBoundVolume(toName, hostPath);
     return;
   }
   // No-op when the source volume was never created on this host.

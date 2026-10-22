@@ -11,8 +11,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
-import { PAGE_SIZE, useDashboardState } from './DashboardState';
-import { Pager } from './Pager';
+import { useDashboardState } from './DashboardState';
 
 type UserRow = { id: number; email: string; name: string; role: string };
 
@@ -22,17 +21,16 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
   const rows = data.users.rows as UserRow[];
   const total = data.users.total;
   const onlineIds = new Set<number>(data.onlineUserIds);
-  const [page, setPage] = useState(1);
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    setUsersParams(page, order);
-  }, [page, order, setUsersParams]);
+    setUsersParams(order);
+  }, [order, setUsersParams]);
 
-  useEffect(() => setSel(new Set()), [page, order]);
+  useEffect(() => setSel(new Set()), [order]);
 
   const toggle = (id: number) =>
     setSel((prev) => {
@@ -107,53 +105,53 @@ export function UsersSector({ onOpen }: { onOpen: (id: number) => void }) {
         </button>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="hc-sector__empty">—</div>
-      ) : (
-        rows.map((u) => (
-          <div className="hc-row" key={u.id}>
-            <div className="hc-row__head">
-              <input
-                type="checkbox"
-                className="hc-row__check"
-                checked={sel.has(u.id)}
-                onChange={() => toggle(u.id)}
-              />
-              <span className="hc-avatar-sq">{(u.name || u.email || 'U').slice(0, 1).toUpperCase()}</span>
-              <span className="hc-row__name" title={u.name || u.email}>
-                {u.name || u.email}
-              </span>
-              <Tooltip title={onlineIds.has(u.id) ? t('presenceOnline') : t('presenceOffline')}>
-                <span
-                  className="hc-presence-dot"
-                  data-online={onlineIds.has(u.id) ? 'true' : 'false'}
-                  aria-label={onlineIds.has(u.id) ? t('presenceOnline') : t('presenceOffline')}
+      <div className="hc-sector__body hc-scroll">
+        {rows.length === 0 ? (
+          <div className="hc-sector__empty">—</div>
+        ) : (
+          rows.map((u) => (
+            <div className="hc-row" key={u.id}>
+              <div className="hc-row__head">
+                <input
+                  type="checkbox"
+                  className="hc-row__check"
+                  checked={sel.has(u.id)}
+                  onChange={() => toggle(u.id)}
                 />
-              </Tooltip>
-              <Tag style={{ margin: 0 }}>{t(`roles.${u.role}`, { defaultValue: u.role })}</Tag>
-              <div className="hc-acts">
-                <Tooltip title={t('edit')}>
-                  <button type="button" className="hc-iconbtn" onClick={() => onOpen(u.id)}>
-                    <EditOutlined />
-                  </button>
+                <span className="hc-avatar-sq">{(u.name || u.email || 'U').slice(0, 1).toUpperCase()}</span>
+                <span className="hc-row__name" title={u.name || u.email}>
+                  {u.name || u.email}
+                </span>
+                <Tooltip title={onlineIds.has(u.id) ? t('presenceOnline') : t('presenceOffline')}>
+                  <span
+                    className="hc-presence-dot"
+                    data-online={onlineIds.has(u.id) ? 'true' : 'false'}
+                    aria-label={onlineIds.has(u.id) ? t('presenceOnline') : t('presenceOffline')}
+                  />
                 </Tooltip>
-                <Tooltip title={t('delete')}>
-                  <button
-                    type="button"
-                    className="hc-iconbtn"
-                    data-tone="danger"
-                    onClick={() => void removeOne(u)}
-                  >
-                    <DeleteOutlined />
-                  </button>
-                </Tooltip>
+                <Tag style={{ margin: 0 }}>{t(`roles.${u.role}`, { defaultValue: u.role })}</Tag>
+                <div className="hc-acts">
+                  <Tooltip title={t('edit')}>
+                    <button type="button" className="hc-iconbtn" onClick={() => onOpen(u.id)}>
+                      <EditOutlined />
+                    </button>
+                  </Tooltip>
+                  <Tooltip title={t('delete')}>
+                    <button
+                      type="button"
+                      className="hc-iconbtn"
+                      data-tone="danger"
+                      onClick={() => void removeOne(u)}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </Tooltip>
+                </div>
               </div>
             </div>
-          </div>
-        ))
-      )}
-
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
+          ))
+        )}
+      </div>
 
       <Modal
         title={t('create')}

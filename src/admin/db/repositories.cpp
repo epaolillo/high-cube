@@ -952,7 +952,7 @@ int64_t Repositories::createApplication(const Application& app) {
     setApplicationHostnames(id, app.hostnames);
   }
   for (const auto& volume : app.volumes) {
-    addVolume(id, volume.name, volume.mountPath);
+    addVolume(id, volume.name, volume.mountPath, volume.hostPath);
   }
   return id;
 }
@@ -1148,25 +1148,48 @@ void Repositories::setTargetServers(int64_t applicationId,
   }
 }
 
+namespace {
+
+ApplicationVolume hydrateVolumeRow(SQLite::Statement& st) {
+  return ApplicationVolume{st.getColumn(0).getInt64(), st.getColumn(1).getInt64(),
+                           st.getColumn(2).getString(), st.getColumn(3).getString(),
+                           st.getColumn(4).getString()};
+}
+
+}  // namespace
+
 std::vector<ApplicationVolume> Repositories::getVolumes(int64_t applicationId) {
   std::vector<ApplicationVolume> volumes;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,application_id,name,mount_path FROM application_volumes WHERE application_id=?");
+                       "SELECT id,application_id,name,mount_path,host_path FROM application_volumes "
+                       "WHERE application_id=?");
   st.bind(1, applicationId);
   while (st.executeStep()) {
-    volumes.push_back(ApplicationVolume{st.getColumn(0).getInt64(), st.getColumn(1).getInt64(),
-                                        st.getColumn(2).getString(), st.getColumn(3).getString()});
+    volumes.push_back(hydrateVolumeRow(st));
+  }
+  return volumes;
+}
+
+std::vector<ApplicationVolume> Repositories::listVolumesWithHostPath() {
+  std::vector<ApplicationVolume> volumes;
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,application_id,name,mount_path,host_path FROM application_volumes "
+                       "WHERE host_path <> ''");
+  while (st.executeStep()) {
+    volumes.push_back(hydrateVolumeRow(st));
   }
   return volumes;
 }
 
 int64_t Repositories::addVolume(int64_t applicationId, const std::string& name,
-                                const std::string& mountPath) {
+                                const std::string& mountPath, const std::string& hostPath) {
   SQLite::Statement st(database_.db(),
-                       "INSERT INTO application_volumes (application_id,name,mount_path) VALUES (?,?,?)");
+                       "INSERT INTO application_volumes (application_id,name,mount_path,host_path) "
+                       "VALUES (?,?,?,?)");
   st.bind(1, applicationId);
   st.bind(2, name);
   st.bind(3, mountPath);
+  st.bind(4, hostPath);
   st.exec();
   return database_.db().getLastInsertRowid();
 }
@@ -1189,13 +1212,13 @@ void Repositories::deleteVolume(int64_t volumeId) {
 
 std::optional<ApplicationVolume> Repositories::findVolumeById(int64_t volumeId) {
   SQLite::Statement st(database_.db(),
-                       "SELECT id,application_id,name,mount_path FROM application_volumes WHERE id=?");
+                       "SELECT id,application_id,name,mount_path,host_path FROM application_volumes "
+                       "WHERE id=?");
   st.bind(1, volumeId);
   if (!st.executeStep()) {
     return std::nullopt;
   }
-  return ApplicationVolume{st.getColumn(0).getInt64(), st.getColumn(1).getInt64(),
-                           st.getColumn(2).getString(), st.getColumn(3).getString()};
+  return hydrateVolumeRow(st);
 }
 
 namespace {

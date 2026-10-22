@@ -17,8 +17,7 @@ import { confirmDestructive } from '../components/confirmDestructive';
 import { HostnamePills } from '../components/HostnamePills';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
-import { PAGE_SIZE, useDashboardState } from './DashboardState';
-import { Pager } from './Pager';
+import { useDashboardState } from './DashboardState';
 
 type AppRow = {
   id: number;
@@ -53,7 +52,6 @@ export function ApplicationsSector({
   const { data, refresh, setApplicationsParams } = useDashboardState();
   const rows = data.applications.rows as AppRow[];
   const total = data.applications.total;
-  const [page, setPage] = useState(1);
   const [category, setCategory] = useState<AppCategory>('other');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [sel, setSel] = useState<Set<number>>(new Set());
@@ -61,10 +59,10 @@ export function ApplicationsSector({
   const [iconEdit, setIconEdit] = useState<AppRow | null>(null);
 
   useEffect(() => {
-    setApplicationsParams(page, category, order);
-  }, [page, category, order, setApplicationsParams]);
+    setApplicationsParams(category, order);
+  }, [category, order, setApplicationsParams]);
 
-  useEffect(() => setSel(new Set()), [page, category, order]);
+  useEffect(() => setSel(new Set()), [category, order]);
 
   const toggle = (id: number) =>
     setSel((prev) => {
@@ -121,10 +119,7 @@ export function ApplicationsSector({
           size="small"
           className="hc-search"
           value={category}
-          onChange={(v) => {
-            setCategory(v);
-            setPage(1);
-          }}
+          onChange={setCategory}
           options={APP_CATEGORIES.map((def) => ({
             value: def.value,
             label: (
@@ -160,90 +155,90 @@ export function ApplicationsSector({
         </button>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="hc-sector__empty">—</div>
-      ) : (
-        rows.map((a) => {
-          const status = a.runtimeStatus ?? 'stopped';
-          const hostnames =
-            a.hostnames && a.hostnames.length > 0
-              ? a.hostnames
-              : a.hostname
-                ? [{ hostname: a.hostname, tlsStatus: a.tlsStatus }]
-                : [];
-          return (
-            <div className="hc-row" key={a.id}>
-              <div className="hc-row__head">
-                <input
-                  type="checkbox"
-                  className="hc-row__check"
-                  checked={sel.has(a.id)}
-                  onChange={() => toggle(a.id)}
-                />
-                <Tooltip title={t('iconEditTitle')}>
-                  <button
-                    type="button"
-                    style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
-                    onClick={() => setIconEdit(a)}
-                  >
-                    <AppIcon icon={a.icon} name={a.name} size={22} />
-                  </button>
-                </Tooltip>
-                <span className="hc-row__name" title={a.name}>
-                  {a.name}
-                </span>
-                <Tag style={{ margin: 0 }}>{t(getAppCategory(a.type).labelKey)}</Tag>
-                <Tag color={STATUS_COLOR[status]} style={{ margin: 0 }}>
-                  {t(`runtimeStatus_${status}`)}
-                </Tag>
-                <div className="hc-acts">
-                  <Tooltip title={t('deploy')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => void deployOne(a.id)}>
-                      <RocketOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('open')}>
-                    <button type="button" className="hc-iconbtn" onClick={() => onOpen(a.id)}>
-                      <SlidersOutlined />
-                    </button>
-                  </Tooltip>
-                  <Tooltip title={t('delete')}>
+      <div className="hc-sector__body hc-scroll">
+        {rows.length === 0 ? (
+          <div className="hc-sector__empty">—</div>
+        ) : (
+          rows.map((a) => {
+            const status = a.runtimeStatus ?? 'stopped';
+            const hostnames =
+              a.hostnames && a.hostnames.length > 0
+                ? a.hostnames
+                : a.hostname
+                  ? [{ hostname: a.hostname, tlsStatus: a.tlsStatus }]
+                  : [];
+            return (
+              <div className="hc-row" key={a.id}>
+                <div className="hc-row__head">
+                  <input
+                    type="checkbox"
+                    className="hc-row__check"
+                    checked={sel.has(a.id)}
+                    onChange={() => toggle(a.id)}
+                  />
+                  <Tooltip title={t('iconEditTitle')}>
                     <button
                       type="button"
-                      className="hc-iconbtn"
-                      data-tone="danger"
-                      onClick={() => void removeOne(a)}
+                      style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+                      onClick={() => setIconEdit(a)}
                     >
-                      <DeleteOutlined />
+                      <AppIcon icon={a.icon} name={a.name} size={22} />
                     </button>
                   </Tooltip>
+                  <span className="hc-row__name" title={a.name}>
+                    {a.name}
+                  </span>
+                  <Tag style={{ margin: 0 }}>{t(getAppCategory(a.type).labelKey)}</Tag>
+                  <Tag color={STATUS_COLOR[status]} style={{ margin: 0 }}>
+                    {t(`runtimeStatus_${status}`)}
+                  </Tag>
+                  <div className="hc-acts">
+                    <Tooltip title={t('deploy')}>
+                      <button type="button" className="hc-iconbtn" onClick={() => void deployOne(a.id)}>
+                        <RocketOutlined />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title={t('open')}>
+                      <button type="button" className="hc-iconbtn" onClick={() => onOpen(a.id)}>
+                        <SlidersOutlined />
+                      </button>
+                    </Tooltip>
+                    <Tooltip title={t('delete')}>
+                      <button
+                        type="button"
+                        className="hc-iconbtn"
+                        data-tone="danger"
+                        onClick={() => void removeOne(a)}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </Tooltip>
+                  </div>
                 </div>
-              </div>
-              <div className="hc-row__metric">
-                <MetricDisplay
-                  cpuPercent={a.cpuPercent}
-                  memoryUsedBytes={a.memoryUsedBytes}
-                  memoryLimitBytes={a.memoryLimitBytes}
-                  diskUsedBytes={a.diskUsedBytes}
-                  startedAt={a.startedAt}
-                  status={status}
-                  replicas={a.runningReplicas}
-                />
-              </div>
-              {(hostnames.length > 0 || (a.servers && a.servers.length > 0)) && (
-                <div className="hc-row__head" style={{ gap: 8 }}>
-                  {hostnames.length > 0 && <HostnamePills hostnames={hostnames} collapse />}
-                  {a.servers && a.servers.length > 0 && (
-                    <span className="hc-row__sub">{a.servers.map((s) => s.name).join(', ')}</span>
-                  )}
+                <div className="hc-row__metric">
+                  <MetricDisplay
+                    cpuPercent={a.cpuPercent}
+                    memoryUsedBytes={a.memoryUsedBytes}
+                    memoryLimitBytes={a.memoryLimitBytes}
+                    diskUsedBytes={a.diskUsedBytes}
+                    startedAt={a.startedAt}
+                    status={status}
+                    replicas={a.runningReplicas}
+                  />
                 </div>
-              )}
-            </div>
-          );
-        })
-      )}
-
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
+                {(hostnames.length > 0 || (a.servers && a.servers.length > 0)) && (
+                  <div className="hc-row__head" style={{ gap: 8 }}>
+                    {hostnames.length > 0 && <HostnamePills hostnames={hostnames} collapse />}
+                    {a.servers && a.servers.length > 0 && (
+                      <span className="hc-row__sub">{a.servers.map((s) => s.name).join(', ')}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
 
       <ApplicationFormModal
         open={createOpen}

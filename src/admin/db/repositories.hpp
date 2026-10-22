@@ -93,7 +93,11 @@ public:
   std::vector<ApplicationServerTarget> getTargetServers(int64_t applicationId);
   void setTargetServers(int64_t applicationId, const std::vector<ApplicationServerTarget>& targets);
   std::vector<ApplicationVolume> getVolumes(int64_t applicationId);
-  int64_t addVolume(int64_t applicationId, const std::string& name, const std::string& mountPath);
+  // Volumes of every application that own a host directory.
+  std::vector<ApplicationVolume> listVolumesWithHostPath();
+  int64_t addVolume(int64_t applicationId, const std::string& name, const std::string& mountPath,
+                    const std::string& hostPath);
+  // The host directory is fixed once the volume exists.
   void updateVolume(int64_t volumeId, const std::string& name, const std::string& mountPath);
   void deleteVolume(int64_t volumeId);
   std::optional<ApplicationVolume> findVolumeById(int64_t volumeId);

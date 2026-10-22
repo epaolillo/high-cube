@@ -6,8 +6,7 @@ import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { MetricDisplay } from '../components/MetricDisplay';
-import { PAGE_SIZE, useDashboardState } from './DashboardState';
-import { Pager } from './Pager';
+import { useDashboardState } from './DashboardState';
 
 type ServerMetrics = {
   cpuPercent?: number;
@@ -50,18 +49,17 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
   const { data, refresh, setServersParams } = useDashboardState();
   const rows = data.servers.rows as ServerRow[];
   const total = data.servers.total;
-  const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ id?: number } | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
-    setServersParams(page, q);
-  }, [page, q, setServersParams]);
+    setServersParams(q);
+  }, [q, setServersParams]);
 
   // Selection resets whenever the visible set changes.
-  useEffect(() => setSel(new Set()), [page, q]);
+  useEffect(() => setSel(new Set()), [q]);
 
   const toggle = (id: number) =>
     setSel((prev) => {
@@ -134,10 +132,7 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
           allowClear
           placeholder={t('name')}
           value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
+          onChange={(e) => setQ(e.target.value)}
         />
       </div>
 
@@ -152,70 +147,70 @@ export function ServersSector({ onOpen }: { onOpen: (id: number) => void }) {
         </button>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="hc-sector__empty">—</div>
-      ) : (
-        rows.map((s) => (
-          <div className="hc-row" key={s.id}>
-            <div className="hc-row__head">
-              <input
-                type="checkbox"
-                className="hc-row__check"
-                checked={sel.has(s.id)}
-                onChange={() => toggle(s.id)}
-              />
-              <span className="hc-dot" data-on={s.status === 'online'} />
-              <span className="hc-row__name" title={s.name}>
-                {s.name}
-              </span>
-              <span className="hc-row__sub">{s.ip}</span>
-              <div className="hc-acts">
-                <Tooltip title={t('edit')}>
-                  <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
-                    <EditOutlined />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t('open')}>
-                  <button type="button" className="hc-iconbtn" onClick={() => onOpen(s.id)}>
-                    <SlidersOutlined />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t('regenerateToken')}>
-                  <button type="button" className="hc-iconbtn" onClick={() => regenerate(s)}>
-                    <KeyOutlined />
-                  </button>
-                </Tooltip>
-                <Tooltip title={t('delete')}>
-                  <button
-                    type="button"
-                    className="hc-iconbtn"
-                    data-tone="danger"
-                    onClick={() => void removeOne(s)}
-                  >
-                    <DeleteOutlined />
-                  </button>
-                </Tooltip>
+      <div className="hc-sector__body hc-scroll">
+        {rows.length === 0 ? (
+          <div className="hc-sector__empty">—</div>
+        ) : (
+          rows.map((s) => (
+            <div className="hc-row" key={s.id}>
+              <div className="hc-row__head">
+                <input
+                  type="checkbox"
+                  className="hc-row__check"
+                  checked={sel.has(s.id)}
+                  onChange={() => toggle(s.id)}
+                />
+                <span className="hc-dot" data-on={s.status === 'online'} />
+                <span className="hc-row__name" title={s.name}>
+                  {s.name}
+                </span>
+                <span className="hc-row__sub">{s.ip}</span>
+                <div className="hc-acts">
+                  <Tooltip title={t('edit')}>
+                    <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
+                      <EditOutlined />
+                    </button>
+                  </Tooltip>
+                  <Tooltip title={t('open')}>
+                    <button type="button" className="hc-iconbtn" onClick={() => onOpen(s.id)}>
+                      <SlidersOutlined />
+                    </button>
+                  </Tooltip>
+                  <Tooltip title={t('regenerateToken')}>
+                    <button type="button" className="hc-iconbtn" onClick={() => regenerate(s)}>
+                      <KeyOutlined />
+                    </button>
+                  </Tooltip>
+                  <Tooltip title={t('delete')}>
+                    <button
+                      type="button"
+                      className="hc-iconbtn"
+                      data-tone="danger"
+                      onClick={() => void removeOne(s)}
+                    >
+                      <DeleteOutlined />
+                    </button>
+                  </Tooltip>
+                </div>
+              </div>
+              <div className="hc-row__metric">
+                <MetricDisplay
+                  cpuPercent={s.metrics?.cpuPercent}
+                  memoryUsedBytes={s.metrics?.memoryUsedBytes}
+                  memoryLimitBytes={s.metrics?.memoryLimitBytes}
+                  diskUsedBytes={s.metrics?.diskUsedBytes}
+                  diskTotalBytes={s.metrics?.diskTotalBytes}
+                  gpuPresent={s.metrics?.gpuPresent}
+                  gpuPercent={s.metrics?.gpuPercent}
+                  gpuMemoryUsedBytes={s.metrics?.gpuMemoryUsedBytes}
+                  gpuMemoryTotalBytes={s.metrics?.gpuMemoryTotalBytes}
+                  status={s.status === 'online' ? 'running' : 'stopped'}
+                />
               </div>
             </div>
-            <div className="hc-row__metric">
-              <MetricDisplay
-                cpuPercent={s.metrics?.cpuPercent}
-                memoryUsedBytes={s.metrics?.memoryUsedBytes}
-                memoryLimitBytes={s.metrics?.memoryLimitBytes}
-                diskUsedBytes={s.metrics?.diskUsedBytes}
-                diskTotalBytes={s.metrics?.diskTotalBytes}
-                gpuPresent={s.metrics?.gpuPresent}
-                gpuPercent={s.metrics?.gpuPercent}
-                gpuMemoryUsedBytes={s.metrics?.gpuMemoryUsedBytes}
-                gpuMemoryTotalBytes={s.metrics?.gpuMemoryTotalBytes}
-                status={s.status === 'online' ? 'running' : 'stopped'}
-              />
-            </div>
-          </div>
-        ))
-      )}
-
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
+          ))
+        )}
+      </div>
 
       <Modal
         title={modal?.id ? t('edit') : t('create')}

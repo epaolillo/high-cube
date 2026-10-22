@@ -1,23 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import api from '../api/client';
 
-// Backend list endpoints used by the dashboard only accept this page size.
-export const PAGE_SIZE = 10;
-
 const POLL_MS = 4000;
 
 export type Paged<T> = { rows: T[]; total: number };
 
-type ServerParams = { page: number; q: string };
-type ApplicationParams = { page: number; type: string; order: 'asc' | 'desc' };
-type UserParams = { page: number; order: 'asc' | 'desc' };
-type DomainParams = { page: number };
+type ServerParams = { q: string };
+type ApplicationParams = { type: string; order: 'asc' | 'desc' };
+type UserParams = { order: 'asc' | 'desc' };
 
 type Params = {
   servers: ServerParams;
   applications: ApplicationParams;
   users: UserParams;
-  domains: DomainParams;
 };
 
 type DashboardData = {
@@ -32,33 +27,23 @@ type DashboardData = {
 type DashboardStateValue = {
   data: DashboardData;
   refresh: () => void;
-  setServersParams: (page: number, q: string) => void;
-  setApplicationsParams: (page: number, type: string, order: 'asc' | 'desc') => void;
-  setUsersParams: (page: number, order: 'asc' | 'desc') => void;
-  setDomainsParams: (page: number) => void;
+  setServersParams: (q: string) => void;
+  setApplicationsParams: (type: string, order: 'asc' | 'desc') => void;
+  setUsersParams: (order: 'asc' | 'desc') => void;
 };
 
 const empty = <T,>(): Paged<T> => ({ rows: [], total: 0 });
 
 const defaultParams: Params = {
-  servers: { page: 1, q: '' },
-  applications: { page: 1, type: 'other', order: 'asc' },
-  users: { page: 1, order: 'asc' },
-  domains: { page: 1 },
+  servers: { q: '' },
+  applications: { type: 'other', order: 'asc' },
+  users: { order: 'asc' },
 };
 
 const DashboardStateContext = createContext<DashboardStateValue | null>(null);
 
-function sameServers(a: ServerParams, b: ServerParams) {
-  return a.page === b.page && a.q === b.q;
-}
-
 function sameApplications(a: ApplicationParams, b: ApplicationParams) {
-  return a.page === b.page && a.type === b.type && a.order === b.order;
-}
-
-function sameUsers(a: UserParams, b: UserParams) {
-  return a.page === b.page && a.order === b.order;
+  return a.type === b.type && a.order === b.order;
 }
 
 export function DashboardStateProvider({ children }: { children: ReactNode }) {
@@ -75,30 +60,22 @@ export function DashboardStateProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
 
-  const setServersParams = useCallback((page: number, q: string) => {
-    const next = { page, q };
-    if (sameServers(paramsRef.current.servers, next)) return;
-    paramsRef.current = { ...paramsRef.current, servers: next };
+  const setServersParams = useCallback((q: string) => {
+    if (paramsRef.current.servers.q === q) return;
+    paramsRef.current = { ...paramsRef.current, servers: { q } };
     setTick((value) => value + 1);
   }, []);
 
-  const setApplicationsParams = useCallback((page: number, type: string, order: 'asc' | 'desc') => {
-    const next = { page, type, order };
+  const setApplicationsParams = useCallback((type: string, order: 'asc' | 'desc') => {
+    const next = { type, order };
     if (sameApplications(paramsRef.current.applications, next)) return;
     paramsRef.current = { ...paramsRef.current, applications: next };
     setTick((value) => value + 1);
   }, []);
 
-  const setUsersParams = useCallback((page: number, order: 'asc' | 'desc') => {
-    const next = { page, order };
-    if (sameUsers(paramsRef.current.users, next)) return;
-    paramsRef.current = { ...paramsRef.current, users: next };
-    setTick((value) => value + 1);
-  }, []);
-
-  const setDomainsParams = useCallback((page: number) => {
-    if (paramsRef.current.domains.page === page) return;
-    paramsRef.current = { ...paramsRef.current, domains: { page } };
+  const setUsersParams = useCallback((order: 'asc' | 'desc') => {
+    if (paramsRef.current.users.order === order) return;
+    paramsRef.current = { ...paramsRef.current, users: { order } };
     setTick((value) => value + 1);
   }, []);
 
@@ -109,14 +86,10 @@ export function DashboardStateProvider({ children }: { children: ReactNode }) {
       try {
         const { data: body } = await api.get('/state', {
           params: {
-            serversPage: params.servers.page,
             serversQ: params.servers.q || undefined,
-            appsPage: params.applications.page,
             appsType: params.applications.type || undefined,
             appsOrder: params.applications.order,
-            usersPage: params.users.page,
             usersOrder: params.users.order,
-            domainsPage: params.domains.page,
           },
           suppressErrorToast: true,
         });
@@ -157,7 +130,7 @@ export function DashboardStateProvider({ children }: { children: ReactNode }) {
 
   return (
     <DashboardStateContext.Provider
-      value={{ data, refresh, setServersParams, setApplicationsParams, setUsersParams, setDomainsParams }}
+      value={{ data, refresh, setServersParams, setApplicationsParams, setUsersParams }}
     >
       {children}
     </DashboardStateContext.Provider>

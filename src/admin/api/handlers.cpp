@@ -15,27 +15,16 @@ bool requireAdmin(RequestContext& c, AppContext& ctx) {
   return ctx.auth->isAdmin(*c.user);
 }
 
-int queryPage(const std::unordered_map<std::string, std::string>& query, const char* key) {
-  const auto it = query.find(key);
-  if (it == query.end() || it->second.empty()) {
-    return 1;
-  }
-  try {
-    return std::max(1, std::stoi(it->second));
-  } catch (const std::exception&) {
-    return 1;
-  }
-}
-
 std::string queryValue(const std::unordered_map<std::string, std::string>& query, const char* key) {
   const auto it = query.find(key);
   return it == query.end() ? std::string{} : it->second;
 }
 
-ListQuery dashboardSlice(const std::unordered_map<std::string, std::string>& query, const char* pageKey) {
+// Dashboard columns are unpaginated: 1000 is the largest page the repositories accept.
+ListQuery dashboardList() {
   ListQuery list;
-  list.page = queryPage(query, pageKey);
-  list.pageSize = 10;
+  list.page = 1;
+  list.pageSize = 1000;
   return list;
 }
 
@@ -115,20 +104,20 @@ void registerHandlers(Router& router, AppContext& ctx) {
   });
 
   router.add("GET", "/api/state", true, [&](RequestContext& c) {
-    auto servers = dashboardSlice(c.query, "serversPage");
+    auto servers = dashboardList();
     servers.q = queryValue(c.query, "serversQ");
-    auto applications = dashboardSlice(c.query, "appsPage");
+    auto applications = dashboardList();
     applications.order = queryValue(c.query, "appsOrder");
     if (applications.order.empty()) {
       applications.order = "asc";
     }
     applications.typeFilter = queryValue(c.query, "appsType");
-    auto users = dashboardSlice(c.query, "usersPage");
+    auto users = dashboardList();
     users.order = queryValue(c.query, "usersOrder");
     if (users.order.empty()) {
       users.order = "asc";
     }
-    auto domains = dashboardSlice(c.query, "domainsPage");
+    const auto domains = dashboardList();
     return jsonResponse(http::status::ok,
                         StateService(ctx).dashboard(servers, applications, users, domains, *c.user));
   });

@@ -58,7 +58,11 @@ struct ApplicationVolume {
   int64_t id = 0;
   int64_t applicationId = 0;
   std::string name;
+  // Directory inside the container.
   std::string mountPath;
+  // Host directory relative to /var/lib/data. Empty for volumes created before host
+  // directories existed: Docker keeps managing their data.
+  std::string hostPath;
 };
 
 // A server the application is allowed to run on. Lower priority is earlier in the round-robin.

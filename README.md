@@ -92,7 +92,7 @@ A web dashboard served by the same NGINX that serves your applications.
 - **GitHub:** each user registers their own GitHub App for private repositories.
 - **Settings:** base domains, plus metrics retention (seven days by default). Admin only.
 
-Every list uses server-side pagination, sorting, and filtering, with page sizes of 10, 100, or 1000 rows. The interface is available in English and Spanish.
+The dashboard columns load every row and scroll inside their card. Detail lists use server-side pagination, sorting, and filtering, with page sizes of 10, 100, or 1000 rows. The interface is available in English and Spanish.
 
 ## Requirements
 

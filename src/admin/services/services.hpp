@@ -48,6 +48,11 @@ nlohmann::json replicaIncidentToJson(const ReplicaIncident& incident);
 nlohmann::json githubAppToJson(const GithubApp& app);
 nlohmann::json userActivityToJson(const UserActivity& activity);
 
+// Every volume host directory lives under this root on its server; the agents enforce it too.
+inline constexpr const char* kVolumesRoot = "/var/lib/data";
+// hostDirectory is the absolute host directory, null when Docker manages the data.
+nlohmann::json volumeToJson(const ApplicationVolume& volume);
+
 // Maps an HTTP method and matched route pattern to a stable, human-oriented
 // action key plus the affected resource, used by the audit trail.
 struct DerivedActivity {

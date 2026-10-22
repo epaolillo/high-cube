@@ -1005,6 +1005,7 @@ void AgentHub::deployReplica(int64_t replicaId) {
     auto* v = order.add_volumes();
     v->set_name(volume.name);
     v->set_mount_path(volume.mountPath);
+    v->set_host_path(volume.hostPath);
   }
 
   session->send(makeEnvelope(::highcube::DEPLOY_REPLICA, order));
@@ -1070,9 +1071,10 @@ void AgentHub::disconnectServer(int64_t serverId) {
   session->close();
 }
 
-void AgentHub::deleteVolumeOnServers(const std::string& volumeName) {
+void AgentHub::deleteVolumeOnServers(const std::string& volumeName, const std::string& hostPath) {
   ::highcube::DeleteVolume order;
   order.set_volume_name(volumeName);
+  order.set_host_path(hostPath);
   const auto envelope = makeEnvelope(::highcube::DELETE_VOLUME, order);
   std::lock_guard lock(mutex_);
   for (auto& [_, session] : sessionsByServer_) {
@@ -1080,10 +1082,12 @@ void AgentHub::deleteVolumeOnServers(const std::string& volumeName) {
   }
 }
 
-void AgentHub::renameVolumeOnServers(const std::string& fromName, const std::string& toName) {
+void AgentHub::renameVolumeOnServers(const std::string& fromName, const std::string& toName,
+                                     const std::string& hostPath) {
   ::highcube::RenameVolume order;
   order.set_from_volume_name(fromName);
   order.set_to_volume_name(toName);
+  order.set_host_path(hostPath);
   const auto envelope = makeEnvelope(::highcube::RENAME_VOLUME, order);
   std::lock_guard lock(mutex_);
   for (auto& [_, session] : sessionsByServer_) {

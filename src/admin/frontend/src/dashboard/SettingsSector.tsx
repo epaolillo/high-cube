@@ -1,12 +1,11 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined, RocketOutlined } from '@ant-design/icons';
 import { Form, Input, InputNumber, List, Modal, Progress, Tag, Tooltip, Typography, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Swal from 'sweetalert2';
 import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
-import { PAGE_SIZE, useDashboardState } from './DashboardState';
-import { Pager } from './Pager';
+import { useDashboardState } from './DashboardState';
 
 type DomainRow = { id: number; hostname: string };
 type RedeployStatus = 'pending' | 'deploying' | 'success' | 'failed' | 'timeout' | 'error';
@@ -25,11 +24,10 @@ const REDEPLOY_COLOR: Record<RedeployStatus, string> = {
 
 export function SettingsSector() {
   const { t } = useTranslation();
-  const { data, refresh, setDomainsParams } = useDashboardState();
+  const { data, refresh } = useDashboardState();
   const rows = data.baseDomains.rows as DomainRow[];
   const total = data.baseDomains.total;
   const ttl = data.metricsTtlDays;
-  const [page, setPage] = useState(1);
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [domainOpen, setDomainOpen] = useState(false);
   const [domainForm] = Form.useForm();
@@ -39,12 +37,6 @@ export function SettingsSector() {
   const [redeployOpen, setRedeployOpen] = useState(false);
   const [redeploying, setRedeploying] = useState(false);
   const [redeployItems, setRedeployItems] = useState<RedeployItem[]>([]);
-
-  useEffect(() => {
-    setDomainsParams(page);
-  }, [page, setDomainsParams]);
-
-  useEffect(() => setSel(new Set()), [page]);
 
   const toggle = (id: number) =>
     setSel((prev) => {
@@ -205,36 +197,36 @@ export function SettingsSector() {
         </button>
       </div>
 
-      {rows.map((d) => (
-        <div className="hc-row" key={d.id}>
-          <div className="hc-row__head">
-            <input
-              type="checkbox"
-              className="hc-row__check"
-              checked={sel.has(d.id)}
-              onChange={() => toggle(d.id)}
-            />
-            <span className="hc-row__name" title={d.hostname}>
-              {d.hostname}
-            </span>
-            <span className="hc-row__sub">{t('baseDomain')}</span>
-            <div className="hc-acts">
-              <Tooltip title={t('delete')}>
-                <button
-                  type="button"
-                  className="hc-iconbtn"
-                  data-tone="danger"
-                  onClick={() => void removeDomain(d)}
-                >
-                  <DeleteOutlined />
-                </button>
-              </Tooltip>
+      <div className="hc-sector__body hc-scroll">
+        {rows.map((d) => (
+          <div className="hc-row" key={d.id}>
+            <div className="hc-row__head">
+              <input
+                type="checkbox"
+                className="hc-row__check"
+                checked={sel.has(d.id)}
+                onChange={() => toggle(d.id)}
+              />
+              <span className="hc-row__name" title={d.hostname}>
+                {d.hostname}
+              </span>
+              <span className="hc-row__sub">{t('baseDomain')}</span>
+              <div className="hc-acts">
+                <Tooltip title={t('delete')}>
+                  <button
+                    type="button"
+                    className="hc-iconbtn"
+                    data-tone="danger"
+                    onClick={() => void removeDomain(d)}
+                  >
+                    <DeleteOutlined />
+                  </button>
+                </Tooltip>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
-
-      <Pager page={page} pageSize={PAGE_SIZE} total={total} onChange={setPage} />
+        ))}
+      </div>
 
       <Modal
         title={t('baseDomains')}

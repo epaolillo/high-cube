@@ -43,7 +43,10 @@ enum MessageKind {
 
 message VolumeSpec {
   string name = 1;
-  string mount_path = 2;
+  string mount_path = 2; // directory inside the container
+  // Host directory relative to /var/lib/data on the agent. Empty for volumes created before
+  // host directories existed: Docker keeps managing their data.
+  string host_path = 3;
 }
 
 message PortMapping {
@@ -130,11 +133,13 @@ message CloseStream {
 
 message DeleteVolume {
   string volume_name = 1;
+  string host_path = 2; // same meaning as VolumeSpec.host_path
 }
 
 message RenameVolume {
   string from_volume_name = 1;
   string to_volume_name = 2;
+  string host_path = 3; // same meaning as VolumeSpec.host_path
 }
 
 message Register {

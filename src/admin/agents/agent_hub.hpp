@@ -60,8 +60,10 @@ public:
                      const std::string& containerId);
   void reconcileServer(int64_t serverId);
   void restartReplica(int64_t replicaId);
-  void deleteVolumeOnServers(const std::string& volumeName);
-  void renameVolumeOnServers(const std::string& fromName, const std::string& toName);
+  // hostPath is relative to /var/lib/data, empty for a Docker-managed volume.
+  void deleteVolumeOnServers(const std::string& volumeName, const std::string& hostPath);
+  void renameVolumeOnServers(const std::string& fromName, const std::string& toName,
+                             const std::string& hostPath);
   void disconnectServer(int64_t serverId);
   void checkOfflineServers();
   // Complete container-metrics rounds the server's current session finished after `since`.

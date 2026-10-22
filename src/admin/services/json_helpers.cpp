@@ -36,6 +36,17 @@ nlohmann::json serverToJson(const Server& server) {
   };
 }
 
+nlohmann::json volumeToJson(const ApplicationVolume& volume) {
+  return {{"id", volume.id},
+          {"name", volume.name},
+          {"mountPath", volume.mountPath},
+          {"hostPath", volume.hostPath},
+          {"hostDirectory", volume.hostPath.empty()
+                                ? nlohmann::json(nullptr)
+                                : nlohmann::json(std::string(kVolumesRoot) + "/" + volume.hostPath)},
+          {"dockerName", "highcube-" + std::to_string(volume.applicationId) + "-" + volume.name}};
+}
+
 nlohmann::json applicationToJson(const Application& app) {
   nlohmann::json deps = nlohmann::json::array();
   for (const auto id : app.dependencies) {
@@ -43,7 +54,7 @@ nlohmann::json applicationToJson(const Application& app) {
   }
   nlohmann::json volumes = nlohmann::json::array();
   for (const auto& v : app.volumes) {
-    volumes.push_back({{"id", v.id}, {"name", v.name}, {"mountPath", v.mountPath}});
+    volumes.push_back(volumeToJson(v));
   }
   nlohmann::json portMappings = nlohmann::json::array();
   for (const auto& mapping : app.portMappings) {

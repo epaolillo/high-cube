@@ -235,18 +235,26 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
     case ::highcube::DELETE_VOLUME: {
       ::highcube::DeleteVolume order;
       if (order.ParseFromString(envelope.payload())) {
-        runtime_.deleteVolume(order.volume_name());
+        // Removing a large data directory can take a while; keep the socket loop responsive.
+        auto self = shared_from_this();
+        std::thread([self, order]() {
+          self->runtime_.deleteVolume(order.volume_name(), order.host_path());
+        }).detach();
       }
       break;
     }
     case ::highcube::RENAME_VOLUME: {
       ::highcube::RenameVolume order;
       if (order.ParseFromString(envelope.payload())) {
-        try {
-          runtime_.renameVolume(order.from_volume_name(), order.to_volume_name());
-        } catch (const std::exception& ex) {
-          spdlog::error("rename volume failed: {}", ex.what());
-        }
+        auto self = shared_from_this();
+        std::thread([self, order]() {
+          try {
+            self->runtime_.renameVolume(order.from_volume_name(), order.to_volume_name(),
+                                        order.host_path());
+          } catch (const std::exception& ex) {
+            spdlog::error("rename volume failed: {}", ex.what());
+          }
+        }).detach();
       }
       break;
     }

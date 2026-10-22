@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,8 +30,10 @@ public:
                               const std::string& containerId) const;
   // Drops managed containers whose replica id is not in keepReplicaIds.
   void removeUnkeptReplicas(const std::vector<int64_t>& keepReplicaIds) const;
-  void deleteVolume(const std::string& volumeName);
-  void renameVolume(const std::string& fromName, const std::string& toName);
+  // hostPath is VolumeSpec.host_path: relative to /var/lib/data, empty for Docker-managed data.
+  void deleteVolume(const std::string& volumeName, const std::string& hostPath);
+  void renameVolume(const std::string& fromName, const std::string& toName,
+                    const std::string& hostPath);
   std::string inspectStatus(const std::string& containerId);
   std::string containerStatsJson(const std::string& containerId);
   // Metrics payloads keyed by container name, gathered with one docker stats and one
@@ -53,6 +56,12 @@ private:
   // after --health-interval, and "unhealthy" after --health-retries more probes.
   std::string waitWhileStarting(const std::string& containerId);
   bool mountsVolume(const std::string& container) const;
+  // Bind device of a Docker volume: nullopt when it does not exist, empty when Docker manages it.
+  std::optional<std::string> volumeDevice(const std::string& volumeName) const;
+  // Creates the host directory and a Docker volume bound to it, or checks an existing one.
+  void ensureBoundVolume(const std::string& volumeName, const std::string& hostPath) const;
+  // Runs a command in a throwaway container that sees /var/lib/data as /hc-data.
+  int runVolumesHelper(const std::vector<std::string>& command) const;
   // Removes a container; one holding a volume is stopped cleanly first.
   void removeContainer(const std::string& container) const;
   std::string docker(const std::vector<std::string>& args) const;

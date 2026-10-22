@@ -73,7 +73,7 @@ export default function DashboardPage() {
           </Dropdown>
         </div>
 
-        <div className="hc-dash__board">
+        <div className="hc-dash__board hc-scroll">
           {isAdmin && <ServersSector onOpen={(id) => setDrawer({ kind: 'server', id })} />}
           <ApplicationsSector
             isAdmin={isAdmin}

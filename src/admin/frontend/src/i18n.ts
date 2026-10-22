@@ -295,19 +295,39 @@ const resources = {
       consumption: 'Current usage',
       volumes: 'Volumes',
       noVolumes: 'No host volume mapping for this application.',
-      volumeHostPath: 'Host path',
       volumeSize: 'Size',
       volumeName: 'Volume name',
-      volumeMountPath: 'Mount path',
+      volumeNameInvalid: 'Letters, digits, ".", "_" or "-", starting with a letter or digit.',
+      volumeLabel: 'Volume {{n}}',
+      volumeHostDirectory: 'Host directory (server)',
+      volumeHostDirectoryHelp:
+        'Folder on the server where the data is stored. Always inside /var/lib/data and never shared with another volume or application.',
+      volumeHostDirectoryLocked:
+        'It cannot change once the volume exists. To use another folder, add a new volume.',
+      volumeHostPathInvalid:
+        'Use folders made of letters, digits, ".", "_" or "-", separated by "/", inside /var/lib/data.',
+      volumeHostPathOverlap:
+        'This folder is the same as, or nested with, the host directory of another volume.',
+      volumeContainerDirectory: 'Container directory',
+      volumeContainerDirectoryHelp:
+        'Absolute path inside the container where that folder appears, e.g. /var/lib/postgresql/data.',
+      volumeMountPathInvalid:
+        'Must be an absolute path inside the container (starting with /), other than /, without ":" or ",".',
+      volumeMountPreview: 'Server {{host}} → container {{container}}',
+      volumeDockerManaged: 'Managed by Docker',
+      volumeDockerManagedHint:
+        'Created before host directories existed: Docker keeps its data in its own volume area.',
       addVolume: 'Add volume',
       editVolume: 'Edit volume',
       deleteVolume: 'Delete volume',
       volumesCreateHint:
-        'Named Docker volumes pinned to one server. Volume-backed apps stay at 1 replica.',
+        'Each volume links a folder of the server (inside /var/lib/data) to a folder of the container. Volume-backed apps stay at 1 replica on one server.',
       volumeAdded: 'Volume added. Redeploy for the mount to take effect.',
       volumeUpdated: 'Volume updated. Redeploy for the mount to take effect.',
       volumeDeleted: 'Volume deleted',
       confirmDeleteVolume: 'Delete this volume and its data on the server?',
+      confirmDeleteVolumeDirectory:
+        'Delete this volume and the folder {{directory}} with all its data on the server?',
       volumeEditStoppedHint: 'Stop the application before editing or deleting volumes.',
       scale: 'Scale',
       scaleSaved: 'Scale settings saved',
@@ -763,19 +783,39 @@ const resources = {
       consumption: 'Consumo actual',
       volumes: 'Volúmenes',
       noVolumes: 'Esta aplicación no mapea volúmenes al host.',
-      volumeHostPath: 'Ruta en el host',
       volumeSize: 'Tamaño',
       volumeName: 'Nombre del volumen',
-      volumeMountPath: 'Ruta de montaje',
+      volumeNameInvalid: 'Letras, números, ".", "_" o "-", empezando con letra o número.',
+      volumeLabel: 'Volumen {{n}}',
+      volumeHostDirectory: 'Directorio en el host (servidor)',
+      volumeHostDirectoryHelp:
+        'Carpeta del servidor donde se guardan los datos. Siempre dentro de /var/lib/data y nunca compartida con otro volumen ni con otra aplicación.',
+      volumeHostDirectoryLocked:
+        'No se puede cambiar una vez creado el volumen. Para usar otra carpeta, agregá un volumen nuevo.',
+      volumeHostPathInvalid:
+        'Usá carpetas con letras, números, ".", "_" o "-", separadas por "/", dentro de /var/lib/data.',
+      volumeHostPathOverlap:
+        'Esta carpeta coincide con, o está anidada en, el directorio del host de otro volumen.',
+      volumeContainerDirectory: 'Directorio en el contenedor',
+      volumeContainerDirectoryHelp:
+        'Ruta absoluta dentro del contenedor donde aparece esa carpeta, p. ej. /var/lib/postgresql/data.',
+      volumeMountPathInvalid:
+        'Debe ser una ruta absoluta dentro del contenedor (empieza con /), distinta de /, sin ":" ni ",".',
+      volumeMountPreview: 'Servidor {{host}} → contenedor {{container}}',
+      volumeDockerManaged: 'Administrado por Docker',
+      volumeDockerManagedHint:
+        'Creado antes de los directorios en el host: Docker guarda sus datos en su propia área de volúmenes.',
       addVolume: 'Agregar volumen',
       editVolume: 'Editar volumen',
       deleteVolume: 'Eliminar volumen',
       volumesCreateHint:
-        'Volúmenes Docker con nombre, anclados a un servidor. Con volúmenes la app queda en 1 réplica.',
+        'Cada volumen vincula una carpeta del servidor (dentro de /var/lib/data) con una carpeta del contenedor. Con volúmenes la app queda en 1 réplica en un solo servidor.',
       volumeAdded: 'Volumen agregado. Redeployá para que se monte.',
       volumeUpdated: 'Volumen actualizado. Redeployá para que se monte.',
       volumeDeleted: 'Volumen eliminado',
       confirmDeleteVolume: '¿Eliminar este volumen y sus datos en el servidor?',
+      confirmDeleteVolumeDirectory:
+        '¿Eliminar este volumen y la carpeta {{directory}} con todos sus datos en el servidor?',
       volumeEditStoppedHint: 'Detené la aplicación antes de editar o eliminar volúmenes.',
       scale: 'Escala',
       scaleSaved: 'Configuración de escala guardada',

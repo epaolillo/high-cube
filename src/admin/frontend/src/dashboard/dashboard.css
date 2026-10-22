@@ -1,19 +1,23 @@
 /*
- * Single-screen admin. One fixed page: a top bar plus a masonry of sector
- * cards in four fixed columns. Everything else happens in modals and
- * drawers, so there is no sidebar and no routed sub-pages.
+ * Single-screen admin. One fixed, viewport-high page: a top bar plus four
+ * fixed full-height sector columns that scroll internally. Everything else
+ * happens in modals and drawers, so there is no sidebar and no routed sub-pages.
  */
 
 .hc-dash {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: #eef1f5;
   color: #0a2540;
 }
 
 /* Top bar: brand left, current-user access on the right. */
 .hc-dash__bar {
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
+  position: relative;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -80,12 +84,15 @@
 
 /* Four fixed columns. Users always occupies the fourth, independent of card height. */
 .hc-dash__board {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(280px, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
-  align-items: start;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .hc-sector--servers {
@@ -101,13 +108,60 @@
   grid-column: 4;
 }
 
+/* Each card fills its column; header, controls and bulk bar stay put while the body scrolls. */
 .hc-sector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   margin: 0;
   background: #fff;
   border: 1px solid #dfe5ec;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(10, 37, 64, 0.05);
+}
+.hc-sector > * {
+  flex: 0 0 auto;
+}
+.hc-sector > .hc-sector__body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/*
+ * Thin, low-contrast scrollbars. Chromium ignores the ::-webkit-scrollbar
+ * styles as soon as scrollbar-width/scrollbar-color are set, so the standard
+ * properties only apply to engines without the pseudo-elements (Firefox).
+ */
+.hc-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.hc-scroll::-webkit-scrollbar-track,
+.hc-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.hc-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: rgba(10, 37, 64, 0.12);
+}
+.hc-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(10, 37, 64, 0.24);
+}
+.hc-scroll::-webkit-scrollbar-thumb:hover,
+.hc-scroll::-webkit-scrollbar-thumb:active {
+  background-color: rgba(99, 91, 255, 0.6);
+}
+@supports not selector(::-webkit-scrollbar) {
+  .hc-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(10, 37, 64, 0.2) transparent;
+  }
 }
 
 .hc-sector__head {
@@ -242,6 +296,10 @@
   border-color: #df1b41;
   color: #df1b41;
 }
+.hc-iconbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .hc-addbtn {
   display: inline-flex;
@@ -347,24 +405,6 @@
 .hc-linkbtn:disabled {
   color: #c3ceda;
   cursor: default;
-}
-
-/* Pager. */
-.hc-pager {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-top: 1px solid #eef1f5;
-}
-.hc-pager__info {
-  margin-right: auto;
-  font-size: 11px;
-  color: #6b7c93;
-}
-.hc-iconbtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* Full-height drawers host the rich detail/management screens. */

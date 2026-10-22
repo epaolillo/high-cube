@@ -126,6 +126,158 @@ std::string parseBasicAuthUsers(const nlohmann::json& items, const std::string& 
   return out;
 }
 
+std::string trimSpaces(const std::string& value) {
+  const auto first = value.find_first_not_of(" \t");
+  if (first == std::string::npos) {
+    return "";
+  }
+  return value.substr(first, value.find_last_not_of(" \t") - first + 1);
+}
+
+std::string jsonText(const nlohmann::json& item, const char* key) {
+  return item.contains(key) && item.at(key).is_string() ? item.at(key).get<std::string>()
+                                                        : std::string();
+}
+
+// The agents apply the same rule before touching a host directory.
+bool isVolumePathSegment(const std::string& segment) {
+  if (segment.empty() || segment.size() > 64 ||
+      !std::isalnum(static_cast<unsigned char>(segment.front()))) {
+    return false;
+  }
+  return std::all_of(segment.begin(), segment.end(), [](unsigned char c) {
+    return std::isalnum(c) || c == '.' || c == '_' || c == '-';
+  });
+}
+
+// Accepts "app/data", "app/data/" or "/var/lib/data/app/data" and returns "app/data".
+std::string normalizeVolumeHostPath(const std::string& raw) {
+  const std::string root = kVolumesRoot;
+  std::string path = trimSpaces(raw);
+  if (path == root || path.rfind(root + "/", 0) == 0) {
+    path.erase(0, root.size());
+  } else if (!path.empty() && path.front() == '/') {
+    throw std::invalid_argument("host directory must be inside " + root);
+  }
+  std::string normalized;
+  int depth = 0;
+  std::istringstream parts(path);
+  std::string segment;
+  while (std::getline(parts, segment, '/')) {
+    if (segment.empty()) {
+      continue;
+    }
+    if (!isVolumePathSegment(segment)) {
+      throw std::invalid_argument(
+          "host directory folders use letters, digits, '.', '_' or '-' and start with a letter "
+          "or digit: " + segment);
+    }
+    normalized += (normalized.empty() ? "" : "/") + segment;
+    ++depth;
+  }
+  if (normalized.empty()) {
+    throw std::invalid_argument("host directory is required: a folder inside " + root);
+  }
+  if (depth > 8 || normalized.size() > 255) {
+    throw std::invalid_argument("host directory is too long");
+  }
+  return normalized;
+}
+
+// "/data/" -> "/data". The value ends up in docker run -v name:<path>.
+std::string normalizeVolumeMountPath(const std::string& raw) {
+  std::string path = trimSpaces(raw);
+  while (path.size() > 1 && path.back() == '/') {
+    path.pop_back();
+  }
+  if (path.empty() || path.front() != '/') {
+    throw std::invalid_argument("container directory (mountPath) must be an absolute path");
+  }
+  if (path == "/") {
+    throw std::invalid_argument("container directory (mountPath) cannot be /");
+  }
+  const bool badChar = std::any_of(path.begin(), path.end(), [](unsigned char c) {
+    return c == ':' || c == ',' || std::iscntrl(c);
+  });
+  if (badChar || (path + "/").find("/../") != std::string::npos) {
+    throw std::invalid_argument("container directory (mountPath) cannot contain ':', ',' or '..'");
+  }
+  return path;
+}
+
+void validateVolumeName(const std::string& name) {
+  if (!isVolumePathSegment(name)) {
+    throw std::invalid_argument(
+        "volume name must be 1-64 letters, digits, '.', '_' or '-' and start with a letter or "
+        "digit");
+  }
+}
+
+// Same directory, or one nested inside the other.
+bool hostPathsOverlap(const std::string& a, const std::string& b) {
+  const auto inside = [](const std::string& parent, const std::string& child) {
+    return child.size() > parent.size() && child.compare(0, parent.size(), parent) == 0 &&
+           child[parent.size()] == '/';
+  };
+  return a == b || inside(a, b) || inside(b, a);
+}
+
+std::string hostPathConflict(const std::string& hostPath, const std::string& otherHostPath,
+                             const std::string& usedBy) {
+  const std::string root = kVolumesRoot;
+  if (hostPath == otherHostPath) {
+    return "host directory " + root + "/" + hostPath + " is already used by " + usedBy;
+  }
+  return "host directory " + root + "/" + hostPath + " overlaps " + root + "/" + otherHostPath +
+         ", used by " + usedBy;
+}
+
+// Volumes of every application share one directory tree per server, and an application can
+// move between servers, so a host directory is unique across all applications.
+void requireFreeHostPath(AppContext& ctx, const User& actor, const std::string& hostPath,
+                         int64_t ignoreVolumeId) {
+  for (const auto& other : ctx.repos->listVolumesWithHostPath()) {
+    if (other.id == ignoreVolumeId || !hostPathsOverlap(hostPath, other.hostPath)) {
+      continue;
+    }
+    std::string usedBy = "another application";
+    const auto owner = ctx.repos->findApplicationById(other.applicationId);
+    if (owner && ctx.auth->canAccessApplication(actor, *owner)) {
+      usedBy = "volume '" + other.name + "' of application '" + owner->name + "'";
+    }
+    throw std::invalid_argument(hostPathConflict(hostPath, other.hostPath, usedBy));
+  }
+}
+
+// Normalizes `added` in place and checks it against the application's current volumes,
+// against each other and against the host directories of every other application.
+void validateNewVolumes(AppContext& ctx, const User& actor, std::vector<ApplicationVolume>& added,
+                        const std::vector<ApplicationVolume>& current) {
+  std::vector<ApplicationVolume> seen = current;
+  for (auto& volume : added) {
+    volume.name = trimSpaces(volume.name);
+    validateVolumeName(volume.name);
+    volume.mountPath = normalizeVolumeMountPath(volume.mountPath);
+    volume.hostPath = normalizeVolumeHostPath(volume.hostPath);
+    for (const auto& other : seen) {
+      if (other.name == volume.name) {
+        throw std::invalid_argument("volume name already exists on this application: " +
+                                    volume.name);
+      }
+      if (other.mountPath == volume.mountPath) {
+        throw std::invalid_argument("container directory already used by another volume: " +
+                                    volume.mountPath);
+      }
+      if (!other.hostPath.empty() && hostPathsOverlap(volume.hostPath, other.hostPath)) {
+        throw std::invalid_argument(hostPathConflict(volume.hostPath, other.hostPath,
+                                                     "volume '" + other.name + "'"));
+      }
+    }
+    requireFreeHostPath(ctx, actor, volume.hostPath, 0);
+    seen.push_back(volume);
+  }
+}
+
 }  // namespace
 
 Application ApplicationService::requireAccess(int64_t id, const User& actor) const {
@@ -457,14 +609,23 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
       app.dependencies.push_back(dep.get<int64_t>());
     }
   }
-  if (body.contains("volumes")) {
+  // Volumes are only taken on create; afterwards the /volumes endpoints manage them.
+  if (!existing && body.contains("volumes")) {
+    if (!body.at("volumes").is_array()) {
+      throw std::invalid_argument("volumes must be an array");
+    }
     app.volumes.clear();
     for (const auto& volume : body.at("volumes")) {
+      if (!volume.is_object()) {
+        throw std::invalid_argument("each volume must be an object");
+      }
       ApplicationVolume v;
-      v.name = volume.at("name").get<std::string>();
-      v.mountPath = volume.at("mountPath").get<std::string>();
+      v.name = jsonText(volume, "name");
+      v.mountPath = jsonText(volume, "mountPath");
+      v.hostPath = jsonText(volume, "hostPath");
       app.volumes.push_back(v);
     }
+    validateNewVolumes(ctx_, actor, app.volumes, {});
   }
   if (!app.volumes.empty()) {
     if (app.desiredReplicas != 1 || app.minReplicas != 1 || app.maxReplicas != 1) {
@@ -808,22 +969,19 @@ nlohmann::json ApplicationService::listVolumes(int64_t id, const User& actor) {
     }
   }
   for (const auto& volume : ctx_.repos->getVolumes(id)) {
-    const std::string dockerName = "highcube-" + std::to_string(id) + "-" + volume.name;
-    nlohmann::json row = {{"id", volume.id},
-                          {"name", volume.name},
-                          {"mountPath", volume.mountPath},
-                          {"dockerName", dockerName},
-                          {"hostPath", nullptr},
-                          {"sizeBytes", nullptr},
-                          {"serverId", ownerServerId ? nlohmann::json(*ownerServerId) : nullptr}};
+    nlohmann::json row = volumeToJson(volume);
+    const auto dockerName = row["dockerName"].get<std::string>();
+    row["sizeBytes"] = nullptr;
+    row["serverId"] = ownerServerId ? nlohmann::json(*ownerServerId) : nullptr;
     for (const auto& live : liveVolumes) {
       if (!live.is_object()) {
         continue;
       }
       const auto liveName = live.value("dockerName", live.value("name", ""));
       if (liveName == dockerName || liveName == volume.name) {
-        if (live.contains("hostPath") && !live["hostPath"].is_null()) {
-          row["hostPath"] = live["hostPath"];
+        // A Docker-managed volume only learns its directory from the running container.
+        if (volume.hostPath.empty() && live.contains("hostPath") && !live["hostPath"].is_null()) {
+          row["hostDirectory"] = live["hostPath"];
         }
         if (live.contains("sizeBytes") && !live["sizeBytes"].is_null()) {
           row["sizeBytes"] = live["sizeBytes"];
@@ -839,25 +997,12 @@ nlohmann::json ApplicationService::listVolumes(int64_t id, const User& actor) {
 nlohmann::json ApplicationService::addVolume(int64_t id, const nlohmann::json& body,
                                              const User& actor) {
   auto app = requireAccess(id, actor);
-  const auto name = body.at("name").get<std::string>();
-  const auto mountPath = body.at("mountPath").get<std::string>();
-  if (name.empty() || mountPath.empty()) {
-    throw std::invalid_argument("name and mountPath are required");
-  }
-  if (name.find('/') != std::string::npos || name.find(' ') != std::string::npos) {
-    throw std::invalid_argument("volume name must be a single path segment");
-  }
-  if (mountPath.front() != '/') {
-    throw std::invalid_argument("mountPath must be absolute");
-  }
-  for (const auto& existing : app.volumes) {
-    if (existing.name == name) {
-      throw std::invalid_argument("volume name already exists on this application");
-    }
-    if (existing.mountPath == mountPath) {
-      throw std::invalid_argument("mountPath already used by another volume");
-    }
-  }
+  std::vector<ApplicationVolume> added(1);
+  added[0].name = jsonText(body, "name");
+  added[0].mountPath = jsonText(body, "mountPath");
+  added[0].hostPath = jsonText(body, "hostPath");
+  validateNewVolumes(ctx_, actor, added, app.volumes);
+  const auto& volume = added[0];
   if (app.volumes.empty()) {
     // First volume forces single-replica manual scale.
     app.desiredReplicas = 1;
@@ -866,12 +1011,9 @@ nlohmann::json ApplicationService::addVolume(int64_t id, const nlohmann::json& b
     app.scaleMode = "manual";
     ctx_.repos->updateApplication(app);
   }
-  const auto volumeId = ctx_.repos->addVolume(id, name, mountPath);
-  auto volume = ctx_.repos->findVolumeById(volumeId);
-  return {{"id", volume->id},
-          {"name", volume->name},
-          {"mountPath", volume->mountPath},
-          {"dockerName", "highcube-" + std::to_string(id) + "-" + volume->name}};
+  const auto volumeId =
+      ctx_.repos->addVolume(id, volume.name, volume.mountPath, volume.hostPath);
+  return volumeToJson(*ctx_.repos->findVolumeById(volumeId));
 }
 
 namespace {
@@ -887,18 +1029,6 @@ void requireApplicationStopped(Repositories& repos, int64_t applicationId) {
   }
 }
 
-void validateVolumeFields(const std::string& name, const std::string& mountPath) {
-  if (name.empty() || mountPath.empty()) {
-    throw std::invalid_argument("name and mountPath are required");
-  }
-  if (name.find('/') != std::string::npos || name.find(' ') != std::string::npos) {
-    throw std::invalid_argument("volume name must be a single path segment");
-  }
-  if (mountPath.front() != '/') {
-    throw std::invalid_argument("mountPath must be absolute");
-  }
-}
-
 }  // namespace
 
 nlohmann::json ApplicationService::updateVolume(int64_t applicationId, int64_t volumeId,
@@ -908,18 +1038,32 @@ nlohmann::json ApplicationService::updateVolume(int64_t applicationId, int64_t v
   if (!volume || volume->applicationId != applicationId) {
     throw std::runtime_error("Volume not found");
   }
-  const auto name = body.value("name", volume->name);
-  const auto mountPath = body.value("mountPath", volume->mountPath);
-  validateVolumeFields(name, mountPath);
+  const auto name = body.contains("name") ? trimSpaces(jsonText(body, "name")) : volume->name;
+  validateVolumeName(name);
+  const auto mountPath = normalizeVolumeMountPath(
+      body.contains("mountPath") ? jsonText(body, "mountPath") : volume->mountPath);
+  // Moving the data is not supported, so the host directory is fixed once the volume exists.
+  if (body.contains("hostPath")) {
+    const auto requested = jsonText(body, "hostPath");
+    const bool unchanged = trimSpaces(requested).empty()
+                               ? volume->hostPath.empty()
+                               : !volume->hostPath.empty() &&
+                                     normalizeVolumeHostPath(requested) == volume->hostPath;
+    if (!unchanged) {
+      throw std::invalid_argument(
+          "the host directory of a volume cannot be changed; add a new volume instead");
+    }
+  }
   for (const auto& existing : app.volumes) {
     if (existing.id == volumeId) {
       continue;
     }
     if (existing.name == name) {
-      throw std::invalid_argument("volume name already exists on this application");
+      throw std::invalid_argument("volume name already exists on this application: " + name);
     }
     if (existing.mountPath == mountPath) {
-      throw std::invalid_argument("mountPath already used by another volume");
+      throw std::invalid_argument("container directory already used by another volume: " +
+                                  mountPath);
     }
   }
   const bool nameChanged = name != volume->name;
@@ -929,14 +1073,10 @@ nlohmann::json ApplicationService::updateVolume(int64_t applicationId, int64_t v
   if (nameChanged && ctx_.agentHub) {
     ctx_.agentHub->renameVolumeOnServers(
         "highcube-" + std::to_string(applicationId) + "-" + volume->name,
-        "highcube-" + std::to_string(applicationId) + "-" + name);
+        "highcube-" + std::to_string(applicationId) + "-" + name, volume->hostPath);
   }
   ctx_.repos->updateVolume(volumeId, name, mountPath);
-  auto updated = ctx_.repos->findVolumeById(volumeId);
-  return {{"id", updated->id},
-          {"name", updated->name},
-          {"mountPath", updated->mountPath},
-          {"dockerName", "highcube-" + std::to_string(applicationId) + "-" + updated->name}};
+  return volumeToJson(*ctx_.repos->findVolumeById(volumeId));
 }
 
 nlohmann::json ApplicationService::metrics(int64_t id, const std::string& from,
@@ -964,8 +1104,8 @@ void ApplicationService::deleteVolume(int64_t applicationId, int64_t volumeId, c
   }
   requireApplicationStopped(*ctx_.repos, applicationId);
   if (ctx_.agentHub) {
-    ctx_.agentHub->deleteVolumeOnServers("highcube-" + std::to_string(applicationId) + "-" +
-                                         volume->name);
+    ctx_.agentHub->deleteVolumeOnServers(
+        "highcube-" + std::to_string(applicationId) + "-" + volume->name, volume->hostPath);
   }
   ctx_.repos->deleteVolume(volumeId);
 }

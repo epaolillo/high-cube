@@ -1,5 +1,5 @@
 import { Button, Form, Input, InputNumber, Modal, Select, Space, Tabs, Typography, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { DATABASE_FLAVORS, flavorForImage } from '../data/databaseFlavors';
@@ -7,8 +7,10 @@ import { AppImageEntry, AppImagePicker } from './AppImagePicker';
 import { APP_CATEGORIES } from './appCategories';
 import { DockerfileExposeHint } from './DockerfileExposeHint';
 import { BaseDomainOption, HostnameFields, HostnameRow } from './HostnameFields';
+import { normalizeHostPath, suggestHostPath, VolumeFields } from './VolumeFields';
 
 type GithubApp = { id: number; name: string; status: string };
+type VolumeDraft = { name?: string; hostPath?: string; mountPath?: string };
 type Repo = { fullName: string; defaultBranch: string };
 type Branch = { name: string };
 
@@ -33,6 +35,8 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
   const branch = Form.useWatch('branch', form);
   const baseDirectory = Form.useWatch('baseDirectory', form);
   const dockerfilePath = Form.useWatch('dockerfilePath', form);
+  const appName = Form.useWatch('name', form);
+  const previousAppName = useRef('');
   const [githubApps, setGithubApps] = useState<{ value: number; label: string }[]>([]);
   const [repos, setRepos] = useState<{ value: string; label: string; defaultBranch: string }[]>([]);
   const [branches, setBranches] = useState<{ value: string; label: string }[]>([]);
@@ -81,6 +85,36 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
       });
   }, [githubAppId, source]);
 
+  // Host directories still holding the suggestion for the previous name follow the new name.
+  useEffect(() => {
+    const previous = previousAppName.current;
+    previousAppName.current = appName || '';
+    const rows: VolumeDraft[] | undefined = form.getFieldValue('volumes');
+    if (!rows?.length) return;
+    let changed = false;
+    const next = rows.map((row) => {
+      if (!row || normalizeHostPath(row.hostPath) !== suggestHostPath(previous, row.name)) return row;
+      changed = true;
+      return { ...row, hostPath: suggestHostPath(appName, row.name) };
+    });
+    if (changed) form.setFieldValue('volumes', next);
+  }, [appName, form]);
+
+  const volumeRows = (): VolumeDraft[] => form.getFieldValue('volumes') || [];
+
+  const otherHostPaths = (index: number) =>
+    volumeRows()
+      .filter((_, i) => i !== index)
+      .map((row) => normalizeHostPath(row?.hostPath))
+      .filter((path): path is string => Boolean(path));
+
+  const newVolume = (): VolumeDraft => {
+    const names = new Set(volumeRows().map((row) => row?.name));
+    let name = 'data';
+    for (let n = 2; names.has(name); n += 1) name = `data${n}`;
+    return { name, hostPath: suggestHostPath(form.getFieldValue('name'), name), mountPath: '' };
+  };
+
   const loadBranches = async (repo: string) => {
     if (!githubAppId || !repo) return;
     const { data } = await api.get(`/github-apps/${githubAppId}/branches`, { params: { repo } });
@@ -105,14 +139,18 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
     crypto.getRandomValues(bytes);
     const password = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
     const fill = (value: string) => value.split('{{secret}}').join(password);
+    const name = form.getFieldValue('name') || entry.name;
     form.setFieldsValue({
-      name: form.getFieldValue('name') || entry.name,
+      name,
       type: entry.group === 'database' ? 'db' : form.getFieldValue('type'),
       databaseFlavor: flavorForImage(entry.id),
       image: entry.image,
       portsExposes: entry.port,
       desiredReplicas: 1,
-      volumes: entry.volumes,
+      volumes: entry.volumes.map((volume) => ({
+        ...volume,
+        hostPath: suggestHostPath(name, volume.name),
+      })),
       envText: Object.entries(entry.env)
         .map(([key, value]) => `${key}=${fill(value)}`)
         .join('\n'),
@@ -173,7 +211,7 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
     }
     if (Array.isArray(values.volumes)) {
       values.volumes = values.volumes.filter(
-        (row: { name?: string; mountPath?: string }) => row?.name && row?.mountPath,
+        (row: VolumeDraft) => row?.name && row?.hostPath && row?.mountPath,
       );
       if (!values.volumes.length) {
         delete values.volumes;
@@ -361,30 +399,37 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
           <Form.List name="volumes">
             {(fields, { add, remove }) => (
               <>
-                {fields.map((field) => (
-                  <Space key={field.key} align="start" style={{ display: 'flex', marginBottom: 8 }}>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'name']}
-                      rules={[{ required: true, message: t('volumeName') }]}
-                      style={{ marginBottom: 0, width: 140 }}
+                {fields.map((field, index) => (
+                  <div
+                    key={field.key}
+                    style={{
+                      marginBottom: 12,
+                      padding: '8px 12px 4px',
+                      border: '1px solid #E3E8EE',
+                      borderRadius: 8,
+                      background: '#FAFBFC',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
                     >
-                      <Input placeholder={t('volumeName')} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'mountPath']}
-                      rules={[{ required: true, message: t('volumeMountPath') }]}
-                      style={{ marginBottom: 0, width: 220 }}
-                    >
-                      <Input placeholder="/var/lib/data" />
-                    </Form.Item>
-                    <Button type="link" danger onClick={() => remove(field.name)}>
-                      {t('remove')}
-                    </Button>
-                  </Space>
+                      <Typography.Text strong>{t('volumeLabel', { n: index + 1 })}</Typography.Text>
+                      <Button type="link" danger onClick={() => remove(field.name)}>
+                        {t('remove')}
+                      </Button>
+                    </div>
+                    <VolumeFields
+                      field={field.name}
+                      listName="volumes"
+                      otherHostPaths={() => otherHostPaths(field.name)}
+                    />
+                  </div>
                 ))}
-                <Button type="dashed" onClick={() => add({ name: 'data', mountPath: '' })} block>
+                <Button type="dashed" onClick={() => add(newVolume())} block>
                   {t('addVolume')}
                 </Button>
               </>
