@@ -61,7 +61,9 @@ public:
   Page<BaseDomain> listBaseDomains(const ListQuery& query);
   int64_t createBaseDomain(const BaseDomain& domain);
   void deleteBaseDomain(int64_t id);
+  void setBaseDomainAccessServer(int64_t id, std::optional<int64_t> serverId);
   std::optional<BaseDomain> findBaseDomainById(int64_t id);
+  std::vector<int64_t> applicationIdsUsingBaseDomain(int64_t id);
   bool hostnameMatchesBaseDomain(const std::string& hostname);
   int applicationsUsingBaseDomain(int64_t id);
   std::vector<BaseDomain> autocompleteBaseDomains(const std::string& q);

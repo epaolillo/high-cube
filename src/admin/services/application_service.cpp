@@ -60,7 +60,16 @@ nlohmann::json applicationJsonWithDomains(AppContext& ctx, const Application& ap
   nlohmann::json domains = nlohmann::json::array();
   if (app.createdBy > 0) {
     for (const auto& domain : ctx.repos->listBaseDomainsForUser(app.createdBy)) {
-      domains.push_back({{"id", domain.id}, {"hostname", domain.hostname}});
+      nlohmann::json row = {{"id", domain.id}, {"hostname", domain.hostname}, {"accessServerId", nullptr},
+                            {"accessServerName", nullptr}, {"accessServerIp", nullptr}};
+      if (domain.accessServerId) {
+        row["accessServerId"] = *domain.accessServerId;
+        if (const auto server = ctx.repos->findServerById(*domain.accessServerId)) {
+          row["accessServerName"] = server->name;
+          row["accessServerIp"] = server->ip;
+        }
+      }
+      domains.push_back(std::move(row));
     }
   }
   json["availableBaseDomains"] = domains;

@@ -3,9 +3,45 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <optional>
 #include <sstream>
+#include <stdexcept>
 
 namespace highcube::admin {
+namespace {
+
+nlohmann::json baseDomainToJson(Repositories& repos, const BaseDomain& domain) {
+  nlohmann::json json = {
+      {"id", domain.id},
+      {"hostname", domain.hostname},
+      {"createdBy", domain.createdBy},
+      {"accessServerId", nullptr},
+      {"accessServerName", nullptr},
+      {"accessServerIp", nullptr},
+  };
+  if (!domain.accessServerId) {
+    return json;
+  }
+  json["accessServerId"] = *domain.accessServerId;
+  if (const auto server = repos.findServerById(*domain.accessServerId)) {
+    json["accessServerName"] = server->name;
+    json["accessServerIp"] = server->ip;
+  }
+  return json;
+}
+
+std::optional<int64_t> parseAccessServerId(Repositories& repos, const nlohmann::json& body) {
+  if (!body.contains("accessServerId") || body.at("accessServerId").is_null()) {
+    return std::nullopt;
+  }
+  const auto serverId = body.at("accessServerId").get<int64_t>();
+  if (serverId <= 0 || !repos.findServerById(serverId)) {
+    throw std::invalid_argument("Unknown server id");
+  }
+  return serverId;
+}
+
+}  // namespace
 
 SettingsService::SettingsService(AppContext& ctx) : ctx_(ctx) {}
 
@@ -13,7 +49,7 @@ nlohmann::json SettingsService::listBaseDomains(const ListQuery& query) {
   const auto page = ctx_.repos->listBaseDomains(query);
   nlohmann::json rows = nlohmann::json::array();
   for (const auto& d : page.rows) {
-    rows.push_back({{"id", d.id}, {"hostname", d.hostname}, {"createdBy", d.createdBy}});
+    rows.push_back(baseDomainToJson(*ctx_.repos, d));
   }
   return {{"rows", rows}, {"total", page.total}};
 }
@@ -21,7 +57,7 @@ nlohmann::json SettingsService::listBaseDomains(const ListQuery& query) {
 nlohmann::json SettingsService::listBaseDomainsUsedByUserApplications(int64_t userId) {
   nlohmann::json rows = nlohmann::json::array();
   for (const auto& d : ctx_.repos->listBaseDomainsUsedByUserApplications(userId)) {
-    rows.push_back({{"id", d.id}, {"hostname", d.hostname}});
+    rows.push_back(baseDomainToJson(*ctx_.repos, d));
   }
   return {{"rows", rows}, {"total", rows.size()}};
 }
@@ -30,8 +66,29 @@ nlohmann::json SettingsService::createBaseDomain(const nlohmann::json& body, con
   BaseDomain domain;
   domain.hostname = body.at("hostname").get<std::string>();
   domain.createdBy = actor.id;
+  domain.accessServerId = parseAccessServerId(*ctx_.repos, body);
   domain.id = ctx_.repos->createBaseDomain(domain);
-  return {{"id", domain.id}, {"hostname", domain.hostname}, {"createdBy", domain.createdBy}};
+  return baseDomainToJson(*ctx_.repos, *ctx_.repos->findBaseDomainById(domain.id));
+}
+
+nlohmann::json SettingsService::updateBaseDomain(int64_t id, const nlohmann::json& body) {
+  if (!ctx_.repos->findBaseDomainById(id)) {
+    throw std::runtime_error("Base domain not found");
+  }
+  if (!body.contains("accessServerId")) {
+    throw std::invalid_argument("accessServerId is required");
+  }
+  ctx_.repos->setBaseDomainAccessServer(id, parseAccessServerId(*ctx_.repos, body));
+  // Replicas already publishing a host port can be reached on the next nginx reload,
+  // without waiting for another deploy.
+  if (ctx_.proxy) {
+    for (const auto appId : ctx_.repos->applicationIdsUsingBaseDomain(id)) {
+      if (const auto app = ctx_.repos->findApplicationById(appId)) {
+        ctx_.proxy->renderApplicationSite(*app);
+      }
+    }
+  }
+  return baseDomainToJson(*ctx_.repos, *ctx_.repos->findBaseDomainById(id));
 }
 
 void SettingsService::deleteBaseDomain(int64_t id) {

@@ -1,7 +1,13 @@
 import { Button, Input, Select, Space, Tag, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 
-export type BaseDomainOption = { id: number; hostname: string };
+export type BaseDomainOption = {
+  id: number;
+  hostname: string;
+  accessServerId?: number | null;
+  accessServerName?: string | null;
+  accessServerIp?: string | null;
+};
 
 export type HostnameRow = {
   subdomain: string;

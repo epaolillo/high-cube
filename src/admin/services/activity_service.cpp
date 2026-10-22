@@ -65,6 +65,7 @@ DerivedActivity deriveActivity(const std::string& method, const std::string& rou
       {"PUT /api/users/:id/domains", "user.setDomains|user"},
       {"DELETE /api/users/:id", "user.delete|user"},
       {"POST /api/settings/base-domains", "baseDomain.create|baseDomain"},
+      {"PATCH /api/settings/base-domains/:id", "baseDomain.setAccessPoint|baseDomain"},
       {"DELETE /api/settings/base-domains/:id", "baseDomain.delete|baseDomain"},
       {"PATCH /api/settings/metrics", "settings.updateMetrics|settings"},
       {"POST /api/servers", "server.create|server"},

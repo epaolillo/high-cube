@@ -41,6 +41,9 @@ struct BaseDomain {
   int64_t id = 0;
   std::string hostname;
   int64_t createdBy = 0;
+  // Server that receives public traffic for this domain. Documentary, and the
+  // signal nginx uses to reach replicas that run on a different server.
+  std::optional<int64_t> accessServerId;
 };
 
 struct ApplicationHostname {

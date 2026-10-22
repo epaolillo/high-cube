@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined, RocketOutlined } from '@ant-design/icons';
-import { Form, Input, InputNumber, List, Modal, Progress, Tag, Tooltip, Typography, message } from 'antd';
+import { Form, Input, InputNumber, List, Modal, Progress, Select, Tag, Tooltip, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Swal from 'sweetalert2';
@@ -7,7 +7,13 @@ import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
 import { useDashboardState } from './DashboardState';
 
-type DomainRow = { id: number; hostname: string };
+type DomainRow = {
+  id: number;
+  hostname: string;
+  accessServerId?: number | null;
+  accessServerName?: string | null;
+};
+type ServerOption = { id: number; name: string; ip?: string };
 type RedeployStatus = 'pending' | 'deploying' | 'success' | 'failed' | 'timeout' | 'error';
 type RedeployItem = { id: number; name: string; status: RedeployStatus };
 
@@ -27,11 +33,14 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
   const { data, refresh } = useDashboardState();
   const rows = data.baseDomains.rows as DomainRow[];
+  const servers = data.servers.rows as ServerOption[];
   const total = data.baseDomains.total;
   const ttl = data.metricsTtlDays;
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [domainOpen, setDomainOpen] = useState(false);
+  const [accessEdit, setAccessEdit] = useState<DomainRow | null>(null);
   const [domainForm] = Form.useForm();
+  const [accessForm] = Form.useForm();
   const [metricsModal, setMetricsModal] = useState<{ ttl: number } | null>(null);
 
   // Redeploy-all progress state.
@@ -49,9 +58,22 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
 
   const submitDomain = async () => {
     const values = await domainForm.validateFields();
-    await api.post('/settings/base-domains', values);
+    await api.post('/settings/base-domains', {
+      hostname: values.hostname,
+      accessServerId: values.accessServerId ?? null,
+    });
     message.success(t('saved'));
     setDomainOpen(false);
+    refresh();
+  };
+  const submitAccessPoint = async () => {
+    if (!accessEdit) return;
+    const values = await accessForm.validateFields();
+    await api.patch(`/settings/base-domains/${accessEdit.id}`, {
+      accessServerId: values.accessServerId ?? null,
+    });
+    message.success(t('accessPointSaved'));
+    setAccessEdit(null);
     refresh();
   };
   const removeDomain = (d: DomainRow) =>
@@ -226,12 +248,31 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
                   checked={sel.has(d.id)}
                   onChange={() => toggle(d.id)}
                 />
-                <span className="hc-row__name" title={d.hostname}>
-                  {d.hostname}
+                <span className="hc-domain">
+                  <span className="hc-row__name" title={d.hostname}>
+                    {d.hostname}
+                  </span>
+                  {d.accessServerName ? (
+                    <span className="hc-domain__tag" title={`${t('accessPoint')}: ${d.accessServerName}`}>
+                      {d.accessServerName}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="hc-row__sub">{t('baseDomain')}</span>
                 {!readOnly && (
                   <div className="hc-acts">
+                    <Tooltip title={t('accessPoint')}>
+                      <button
+                        type="button"
+                        className="hc-iconbtn"
+                        onClick={() => {
+                          accessForm.setFieldsValue({ accessServerId: d.accessServerId ?? undefined });
+                          setAccessEdit(d);
+                        }}
+                      >
+                        <EditOutlined />
+                      </button>
+                    </Tooltip>
                     <Tooltip title={t('delete')}>
                       <button
                         type="button"
@@ -263,6 +304,40 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
         <Form form={domainForm} layout="vertical">
           <Form.Item name="hostname" label="Hostname" rules={[{ required: true }]}>
             <Input placeholder="example.com" />
+          </Form.Item>
+          <Form.Item name="accessServerId" label={t('accessPoint')} extra={t('accessPointHint')}>
+            <Select
+              allowClear
+              placeholder={t('accessPointLabel')}
+              options={servers.map((server) => ({
+                value: server.id,
+                label: server.ip ? `${server.name} (${server.ip})` : server.name,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={accessEdit ? `${t('accessPoint')} · ${accessEdit.hostname}` : t('accessPoint')}
+        open={!!accessEdit}
+        onCancel={() => setAccessEdit(null)}
+        okButtonProps={{ type: 'primary' }}
+        okText={t('save')}
+        cancelText={t('cancel')}
+        onOk={submitAccessPoint}
+        destroyOnClose
+      >
+        <Form form={accessForm} layout="vertical">
+          <Form.Item name="accessServerId" label={t('accessPointLabel')} extra={t('accessPointHint')}>
+            <Select
+              allowClear
+              placeholder={t('accessPointLabel')}
+              options={servers.map((server) => ({
+                value: server.id,
+                label: server.ip ? `${server.name} (${server.ip})` : server.name,
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>

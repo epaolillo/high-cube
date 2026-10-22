@@ -231,6 +231,38 @@
   font-weight: 600;
   color: #0a2540;
 }
+/* Access point sits under the hostname, inside the existing row padding. */
+.hc-domain {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.hc-domain .hc-row__name {
+  flex: none;
+  display: block;
+  line-height: 14px;
+}
+.hc-domain__tag {
+  position: absolute;
+  left: 0;
+  top: 13px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #e8f1ff;
+  color: #3b6fb6;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 9px;
+  pointer-events: none;
+}
+.hc-row--muted .hc-domain__tag {
+  color: #8aa0b8;
+  background: #f2f4f7;
+}
 .hc-row__sub {
   font-size: 11px;
   color: #6b7c93;

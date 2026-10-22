@@ -101,6 +101,7 @@ public:
   // Read-only view for the User role: only base domains used by the user's applications.
   nlohmann::json listBaseDomainsUsedByUserApplications(int64_t userId);
   nlohmann::json createBaseDomain(const nlohmann::json& body, const User& actor);
+  nlohmann::json updateBaseDomain(int64_t id, const nlohmann::json& body);
   void deleteBaseDomain(int64_t id);
   nlohmann::json autocompleteBaseDomains(const std::string& q);
   nlohmann::json getMetricsSettings();

@@ -14,6 +14,18 @@ std::string lower(std::string value) {
   return value;
 }
 
+// Columns: id, hostname, created_by, access_server_id.
+BaseDomain readBaseDomain(SQLite::Statement& st) {
+  BaseDomain domain;
+  domain.id = st.getColumn(0).getInt64();
+  domain.hostname = st.getColumn(1).getString();
+  domain.createdBy = st.getColumn(2).getInt64();
+  if (!st.getColumn(3).isNull()) {
+    domain.accessServerId = st.getColumn(3).getInt64();
+  }
+  return domain;
+}
+
 std::vector<PortMapping> parsePortMappings(const std::string& json) {
   std::vector<PortMapping> rows;
   const auto parsed = nlohmann::json::parse(json.empty() ? "[]" : json, nullptr, false);
@@ -418,13 +430,12 @@ std::vector<BaseDomain> Repositories::listBaseDomainsForUser(int64_t userId) {
   std::vector<BaseDomain> rows;
   SQLite::Statement st(
       database_.db(),
-      "SELECT d.id,d.hostname,COALESCE(d.created_by,0) FROM base_domains d "
+      "SELECT d.id,d.hostname,COALESCE(d.created_by,0),d.access_server_id FROM base_domains d "
       "INNER JOIN user_base_domains ud ON ud.base_domain_id=d.id "
       "WHERE ud.user_id=? ORDER BY d.hostname ASC");
   st.bind(1, userId);
   while (st.executeStep()) {
-    rows.push_back(BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(),
-                              st.getColumn(2).getInt64()});
+    rows.push_back(readBaseDomain(st));
   }
   return rows;
 }
@@ -433,14 +444,13 @@ std::vector<BaseDomain> Repositories::listBaseDomainsUsedByUserApplications(int6
   std::vector<BaseDomain> rows;
   SQLite::Statement st(
       database_.db(),
-      "SELECT id,hostname,COALESCE(created_by,0) FROM base_domains WHERE id IN ("
+      "SELECT id,hostname,COALESCE(created_by,0),access_server_id FROM base_domains WHERE id IN ("
       "SELECT ah.base_domain_id FROM application_hostnames ah "
       "INNER JOIN applications a ON a.id=ah.application_id WHERE a.created_by=?) "
       "ORDER BY hostname ASC");
   st.bind(1, userId);
   while (st.executeStep()) {
-    rows.push_back(BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(),
-                              st.getColumn(2).getInt64()});
+    rows.push_back(readBaseDomain(st));
   }
   return rows;
 }
@@ -590,6 +600,10 @@ void Repositories::markOnlineServersOffline() {
 
 void Repositories::deleteServer(int64_t id) {
   SQLite::Transaction tx(database_.db());
+  SQLite::Statement domains(database_.db(),
+                            "UPDATE base_domains SET access_server_id=NULL WHERE access_server_id=?");
+  domains.bind(1, id);
+  domains.exec();
   // replicas.server_id has no ON DELETE CASCADE, so children must go first.
   SQLite::Statement replicas(database_.db(), "DELETE FROM replicas WHERE server_id=?");
   replicas.bind(1, id);
@@ -685,22 +699,26 @@ Page<BaseDomain> Repositories::listBaseDomains(const ListQuery& query) {
   const int pageSize = clampPageSize(query.pageSize);
   const int offset = (std::max(1, query.page) - 1) * pageSize;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,hostname,COALESCE(created_by,0) FROM base_domains "
+                       "SELECT id,hostname,COALESCE(created_by,0),access_server_id FROM base_domains "
                        "ORDER BY hostname ASC LIMIT ? OFFSET ?");
   st.bind(1, pageSize);
   st.bind(2, offset);
   while (st.executeStep()) {
-    page.rows.push_back(BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(),
-                                   st.getColumn(2).getInt64()});
+    page.rows.push_back(readBaseDomain(st));
   }
   return page;
 }
 
 int64_t Repositories::createBaseDomain(const BaseDomain& domain) {
   SQLite::Statement st(database_.db(),
-                       "INSERT INTO base_domains (hostname, created_by) VALUES (?,?)");
+                       "INSERT INTO base_domains (hostname, created_by, access_server_id) VALUES (?,?,?)");
   st.bind(1, lower(domain.hostname));
   st.bind(2, domain.createdBy);
+  if (domain.accessServerId) {
+    st.bind(3, *domain.accessServerId);
+  } else {
+    st.bind(3);
+  }
   st.exec();
   return database_.db().getLastInsertRowid();
 }
@@ -711,14 +729,25 @@ void Repositories::deleteBaseDomain(int64_t id) {
   st.exec();
 }
 
+void Repositories::setBaseDomainAccessServer(int64_t id, std::optional<int64_t> serverId) {
+  SQLite::Statement st(database_.db(), "UPDATE base_domains SET access_server_id=? WHERE id=?");
+  if (serverId) {
+    st.bind(1, *serverId);
+  } else {
+    st.bind(1);
+  }
+  st.bind(2, id);
+  st.exec();
+}
+
 std::optional<BaseDomain> Repositories::findBaseDomainById(int64_t id) {
   SQLite::Statement st(database_.db(),
-                       "SELECT id,hostname,COALESCE(created_by,0) FROM base_domains WHERE id=?");
+                       "SELECT id,hostname,COALESCE(created_by,0),access_server_id FROM base_domains WHERE id=?");
   st.bind(1, id);
   if (!st.executeStep()) {
     return std::nullopt;
   }
-  return BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(), st.getColumn(2).getInt64()};
+  return readBaseDomain(st);
 }
 
 bool Repositories::hostnameMatchesBaseDomain(const std::string& hostname) {
@@ -744,6 +773,17 @@ int Repositories::applicationsUsingBaseDomain(int64_t id) {
   st.bind(1, id);
   st.executeStep();
   return st.getColumn(0).getInt();
+}
+
+std::vector<int64_t> Repositories::applicationIdsUsingBaseDomain(int64_t id) {
+  std::vector<int64_t> ids;
+  SQLite::Statement st(database_.db(),
+                       "SELECT DISTINCT application_id FROM application_hostnames WHERE base_domain_id=?");
+  st.bind(1, id);
+  while (st.executeStep()) {
+    ids.push_back(st.getColumn(0).getInt64());
+  }
+  return ids;
 }
 
 std::vector<ApplicationHostname> Repositories::getApplicationHostnames(int64_t applicationId) {
@@ -857,11 +897,11 @@ void Repositories::syncPrimaryHostname(int64_t applicationId) {
 std::vector<BaseDomain> Repositories::autocompleteBaseDomains(const std::string& q) {
   std::vector<BaseDomain> rows;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,hostname,COALESCE(created_by,0) FROM base_domains WHERE hostname LIKE ? LIMIT 20");
+                       "SELECT id,hostname,COALESCE(created_by,0),access_server_id FROM base_domains "
+                       "WHERE hostname LIKE ? LIMIT 20");
   st.bind(1, "%" + q + "%");
   while (st.executeStep()) {
-    rows.push_back(BaseDomain{st.getColumn(0).getInt64(), st.getColumn(1).getString(),
-                              st.getColumn(2).getInt64()});
+    rows.push_back(readBaseDomain(st));
   }
   return rows;
 }

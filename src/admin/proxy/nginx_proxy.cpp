@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 extern char** environ;
@@ -197,13 +198,41 @@ std::string NginxProxy::renderApplicationSite(const Application& app) {
   std::ostringstream upstream;
   int backends = 0;
   const int internalPort = app.portsExposes > 0 ? app.portsExposes : 80;
+  // Servers that receive public traffic for this application's domains.
+  // A replica on any other server is reached through its VPN address and a
+  // published host port, because the Docker bridge is not routed.
+  std::unordered_set<int64_t> accessServerIds;
+  for (const auto& row : app.hostnames) {
+    if (row.baseDomainId <= 0) {
+      continue;
+    }
+    const auto domain = repos_.findBaseDomainById(row.baseDomainId);
+    if (domain && domain->accessServerId) {
+      accessServerIds.insert(*domain->accessServerId);
+    }
+  }
   for (const auto& replica : replicas.rows) {
     if (!(replica.status == "running" || replica.status == "healthy")) {
       continue;
     }
-    // Prefer the container IP on the highcube network: public hostnames are
-    // served without publishing any host port. Fall back to a published host
-    // port only when it was explicitly configured and no container IP is known.
+    bool remoteFromAccessPoint = false;
+    for (const auto accessId : accessServerIds) {
+      if (accessId != replica.serverId) {
+        remoteFromAccessPoint = true;
+        break;
+      }
+    }
+    if (remoteFromAccessPoint && replica.hostPort) {
+      auto server = repos_.findServerById(replica.serverId);
+      if (server && !server->ip.empty()) {
+        upstream << "  server " << server->ip << ":" << *replica.hostPort << ";\n";
+        ++backends;
+        continue;
+      }
+    }
+    // Same host as nginx: the container IP on the highcube network is enough,
+    // so no host port has to be published. A published host port is the
+    // fallback when the container IP is not known yet.
     if (!replica.containerIp.empty()) {
       upstream << "  server " << replica.containerIp << ":" << internalPort << ";\n";
       ++backends;

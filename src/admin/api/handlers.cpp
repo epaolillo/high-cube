@@ -201,6 +201,12 @@ void registerHandlers(Router& router, AppContext& ctx) {
         http::status::created,
         SettingsService(ctx).createBaseDomain(nlohmann::json::parse(c.request.body()), *c.user));
   });
+  router.add("PATCH", "/api/settings/base-domains/:id", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok,
+                        SettingsService(ctx).updateBaseDomain(
+                            std::stoll(c.params["id"]), nlohmann::json::parse(c.request.body())));
+  });
   router.add("DELETE", "/api/settings/base-domains/:id", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     SettingsService(ctx).deleteBaseDomain(std::stoll(c.params["id"]));

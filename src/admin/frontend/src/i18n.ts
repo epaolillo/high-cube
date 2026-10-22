@@ -165,6 +165,12 @@ const resources = {
       assignedDomains: 'Assigned domains',
       assignedDomainsHint: 'This user can only create hostnames under these base domains.',
       baseDomain: 'Base domain',
+      accessPoint: 'Global access point',
+      accessPointHint:
+        'Server that receives public traffic for this domain. Nginx uses it when an application runs on a different server and publishes a host port.',
+      accessPointNone: 'No access point',
+      accessPointLabel: 'Public server',
+      accessPointSaved: 'Access point saved',
       hostnames: 'Hostnames',
       subdomain: 'Subdomain',
       additionalSubdomain: 'Additional subdomain',
@@ -215,6 +221,17 @@ const resources = {
       hostPortAutoHint: 'Use 0 to let the agent pick a free host port',
       hostPortExplicitHint:
         'Leave 0 to keep the port internal (served through the highcube network). Set a value only to publish it on the host; it must be free on the target server.',
+      remotePortTitle: 'This app is not on the public server',
+      remotePortBody:
+        'It runs on {{appServers}}. Public traffic for {{domains}} enters through {{accessServers}}, and those machines do not share a Docker network. Publish a host port, save, and redeploy so nginx can reach {{reach}}.',
+      remotePortReady:
+        'Host port configured. After you save and redeploy, nginx on {{accessServers}} will proxy to {{reach}}.',
+      remotePortNeedValue:
+        'Set a host port greater than 0, and set the container port to the one the process listens on. Zero keeps the port inside Docker, where the public nginx cannot connect.',
+      remotePortAction: 'Expose host port',
+      hostPortSuggesting: 'Looking for a free host port…',
+      hostPortSuggested: 'Host port {{port}} is free. Save and redeploy to publish it.',
+      hostPortSuggestFailed: 'No free host port found. Enter one manually.',
       hostPortUnavailable: 'Host port {{port}} is already in use on the target server',
       portStatus_checking: 'Checking…',
       portStatus_available: 'Available',
@@ -413,6 +430,7 @@ const resources = {
       activityAction_user_setDomains: 'Changed assigned domains',
       activityAction_user_delete: 'Deleted a user',
       activityAction_baseDomain_create: 'Added a base domain',
+      activityAction_baseDomain_setAccessPoint: 'Changed a domain access point',
       activityAction_baseDomain_delete: 'Deleted a base domain',
       activityAction_settings_updateMetrics: 'Updated metrics settings',
       activityAction_server_create: 'Created a server',
@@ -653,6 +671,12 @@ const resources = {
       assignedDomains: 'Dominios asignados',
       assignedDomainsHint: 'Este usuario solo puede crear hostnames bajo estos dominios base.',
       baseDomain: 'Dominio base',
+      accessPoint: 'Access point global',
+      accessPointHint:
+        'Servidor que recibe el tráfico público de este dominio. Nginx lo usa cuando una aplicación corre en otro servidor y publica un puerto en el host.',
+      accessPointNone: 'Sin access point',
+      accessPointLabel: 'Servidor público',
+      accessPointSaved: 'Access point guardado',
       hostnames: 'Hostnames',
       subdomain: 'Subdominio',
       additionalSubdomain: 'Subdominio adicional',
@@ -703,6 +727,17 @@ const resources = {
       hostPortAutoHint: 'Usá 0 para que el agente elija un puerto libre en el host',
       hostPortExplicitHint:
         'Dejá 0 para mantener el puerto interno (se sirve por la red highcube). Poné un valor solo para publicarlo en el host; debe estar libre en el servidor destino.',
+      remotePortTitle: 'Esta app no está en el servidor público',
+      remotePortBody:
+        'Corre en {{appServers}}. El tráfico público de {{domains}} entra por {{accessServers}}, y esas máquinas no comparten la red de Docker. Publicá un puerto en el host, guardá y hacé redeploy para que nginx llegue a {{reach}}.',
+      remotePortReady:
+        'Puerto de host configurado. Después de guardar y redeployar, nginx en {{accessServers}} va a proxear a {{reach}}.',
+      remotePortNeedValue:
+        'Indicá un puerto de host mayor que 0, y el puerto del contenedor en el que escucha el proceso. Cero deja el puerto dentro de Docker, donde el nginx público no puede conectar.',
+      remotePortAction: 'Exponer puerto en el host',
+      hostPortSuggesting: 'Buscando un puerto de host libre…',
+      hostPortSuggested: 'El puerto {{port}} está libre. Guardá y hacé redeploy para publicarlo.',
+      hostPortSuggestFailed: 'No encontré un puerto de host libre. Cargalo a mano.',
       hostPortUnavailable: 'El puerto {{port}} ya está en uso en el servidor destino',
       portStatus_checking: 'Verificando…',
       portStatus_available: 'Disponible',
@@ -903,6 +938,7 @@ const resources = {
       activityAction_user_setDomains: 'Cambió dominios asignados',
       activityAction_user_delete: 'Eliminó un usuario',
       activityAction_baseDomain_create: 'Agregó un dominio base',
+      activityAction_baseDomain_setAccessPoint: 'Cambió el access point de un dominio',
       activityAction_baseDomain_delete: 'Eliminó un dominio base',
       activityAction_settings_updateMetrics: 'Actualizó la configuración de métricas',
       activityAction_server_create: 'Creó un servidor',

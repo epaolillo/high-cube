@@ -37,6 +37,7 @@ import { HostnamePills } from '../components/HostnamePills';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { APP_CATEGORIES } from '../components/appCategories';
 import { DATABASE_FLAVORS } from '../data/databaseFlavors';
+import { DomainAccessPoints } from '../components/DomainAccessPoints';
 import { BaseDomainOption, HostnameFields, HostnameRow } from '../components/HostnameFields';
 import { suggestHostPath, VolumeFields } from '../components/VolumeFields';
 import { connectTerminalTarget, type TerminalMode, type TerminalTransport } from '../terminal/transport';
@@ -575,6 +576,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   const basicAuthDirty = useRef(false);
   const [portMappings, setPortMappings] = useState<PortMapping[]>([]);
   const serverMappings = useRef<string>('[]');
+  // Ports we just confirmed free, so the debounced check does not ask the agent again.
+  const verifiedHostPorts = useRef<Set<number>>(new Set());
   // Live host-port availability: port number -> check state.
   type PortCheckStatus = 'checking' | 'available' | 'unavailable' | 'self' | 'unknown';
   const [portStatus, setPortStatus] = useState<Record<number, PortCheckStatus>>({});
@@ -669,7 +672,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
 
   const [saving, setSaving] = useState(false);
   const [availableServers, setAvailableServers] = useState<
-    { id: number; name: string; status: string }[]
+    { id: number; name: string; status: string; ip?: string }[]
   >([]);
   const [serversLoaded, setServersLoaded] = useState(false);
   const [targetRows, setTargetRows] = useState<
@@ -753,6 +756,48 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     () => new Set(replicas.map((r) => r.serverId)).size,
     [replicas],
   );
+  const remoteAccess = useMemo(() => {
+    const domainIds = [...new Set(hostnameRows.map((row) => row.baseDomainId).filter((id) => id > 0))];
+    const used = domainIds
+      .map((domainId) => domains.find((domain) => domain.id === domainId))
+      .filter((domain): domain is BaseDomainOption => Boolean(domain?.accessServerId));
+    if (used.length === 0) return null;
+    const live = replicas.filter((replica) => replica.status === 'running' || replica.status === 'healthy');
+    const placed = live.length
+      ? live.map((replica) => ({
+          id: replica.serverId,
+          name:
+            replica.serverName ||
+            availableServers.find((server) => server.id === replica.serverId)?.name ||
+            String(replica.serverId),
+          ip: availableServers.find((server) => server.id === replica.serverId)?.ip,
+        }))
+      : targetRows
+          .filter((row) => row.enabled)
+          .map((row) => ({
+            id: row.id,
+            name: row.name,
+            ip: availableServers.find((server) => server.id === row.id)?.ip,
+          }));
+    const unique = new Map<number, { id: number; name: string; ip?: string }>();
+    for (const server of placed) unique.set(server.id, server);
+    const remote = [...unique.values()].filter((server) =>
+      used.some((domain) => domain.accessServerId !== server.id),
+    );
+    if (remote.length === 0) return null;
+    const hostPort = portMappings.find((mapping) => mapping.hostPort > 0)?.hostPort;
+    return {
+      appServers: [...new Set(remote.map((server) => server.name))].join(', '),
+      accessServers: [...new Set(used.map((domain) => domain.accessServerName).filter(Boolean))].join(', '),
+      domains: [...new Set(used.map((domain) => domain.hostname))].join(', '),
+      reach: remote
+        .map((server) =>
+          hostPort && hostPort > 0 ? `${server.ip || server.name}:${hostPort}` : server.ip || server.name,
+        )
+        .join(', '),
+      published: Boolean(hostPort && hostPort > 0),
+    };
+  }, [hostnameRows, domains, replicas, targetRows, availableServers, portMappings, t]);
   const latestDeploy = deployments[0];
   const selectedReplica = replicas.find((r) => r.id === selectedReplicaId);
   const shellEnabled = Boolean(
@@ -858,8 +903,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
 
   // Asks the agent whether a host port is free on the target servers, then polls
   // for the outcome. Runs quickly so the UI can block save/redeploy on a conflict.
-  const checkHostPort = async (port: number) => {
-    if (!id || !port || port <= 0) return;
+  const checkHostPort = async (port: number): Promise<PortCheckStatus | undefined> => {
+    if (!id || !port || port <= 0) return undefined;
     setPortStatus((current) => ({ ...current, [port]: 'checking' }));
     try {
       const { data } = await api.post(`/applications/${id}/port-check`, { port });
@@ -868,13 +913,59 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         await new Promise((resolve) => setTimeout(resolve, 400));
         const res = await api.get(`/applications/${id}/port-check/${checkId}`);
         if (res.data.status !== 'pending') {
-          setPortStatus((current) => ({ ...current, [port]: res.data.status as PortCheckStatus }));
-          return;
+          const status = res.data.status as PortCheckStatus;
+          setPortStatus((current) => ({ ...current, [port]: status }));
+          return status;
         }
       }
       setPortStatus((current) => ({ ...current, [port]: 'unknown' }));
+      return 'unknown';
     } catch {
       setPortStatus((current) => ({ ...current, [port]: 'unknown' }));
+      return 'unknown';
+    }
+  };
+
+  // Picks a host port the target servers report as free and writes it into the mapping.
+  // Skipped when every replica already runs on the access point, or a host port is set.
+  const assignSuggestedHostPort = async (accessServerId?: number) => {
+    if (!id || !isAdmin) return;
+    if (portMappings.some((mapping) => mapping.hostPort > 0)) return;
+    if (accessServerId) {
+      const live = replicas.filter((replica) => replica.status === 'running' || replica.status === 'healthy');
+      const placed = live.length
+        ? [...new Set(live.map((replica) => replica.serverId))]
+        : targetRows.filter((row) => row.enabled).map((row) => row.id);
+      if (placed.length > 0 && placed.every((serverId) => serverId === accessServerId)) return;
+    }
+    const containerPort =
+      portMappings.find((mapping) => mapping.containerPort > 0)?.containerPort || app?.portsExposes || 80;
+    const hide = message.loading(t('hostPortSuggesting'), 0);
+    try {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const port = 20000 + Math.floor(Math.random() * 20000);
+        const status = await checkHostPort(port);
+        if (status !== 'available') continue;
+        verifiedHostPorts.current.add(port);
+        setPortMappings((rows) => {
+          if (rows.some((row) => row.hostPort > 0)) return rows;
+          if (rows.length === 0) return [{ containerPort, hostPort: port }];
+          const index = rows.findIndex((row) => row.hostPort <= 0);
+          if (index < 0) return [...rows, { containerPort, hostPort: port }];
+          const next = [...rows];
+          next[index] = {
+            ...next[index],
+            containerPort: next[index].containerPort || containerPort,
+            hostPort: port,
+          };
+          return next;
+        });
+        message.success(t('hostPortSuggested', { port }));
+        return;
+      }
+      message.warning(t('hostPortSuggestFailed'));
+    } finally {
+      hide();
     }
   };
 
@@ -900,6 +991,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       ports.forEach((port) => {
         if (savedHostPorts.includes(port)) {
           setPortStatus((current) => ({ ...current, [port]: 'self' }));
+        } else if (verifiedHostPorts.current.has(port)) {
+          setPortStatus((current) => ({ ...current, [port]: 'available' }));
         } else {
           checkHostPort(port);
         }
@@ -1274,6 +1367,18 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               setHostnameRows(rows);
             }}
           />
+          <DomainAccessPoints
+            domains={domains}
+            hostnames={hostnameRows}
+            servers={availableServers}
+            isAdmin={isAdmin}
+            onUpdated={(updated) =>
+              setDomains((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)))
+            }
+            onSelected={(accessServerId) => {
+              void assignSuggestedHostPort(accessServerId);
+            }}
+          />
           <div style={{ marginTop: 20 }}>
             <div
               style={{
@@ -1435,13 +1540,41 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           {isAdmin && (
             <Button
               onClick={() =>
-                setPortMappings((rows) => [...rows, { containerPort: 80, hostPort: 0 }])
+                setPortMappings((rows) => [...rows, { containerPort: app.portsExposes || 80, hostPort: 0 }])
               }
             >
               {t('addExposePort')}
             </Button>
           )}
         </div>
+        {remoteAccess ? (
+          <Alert
+            style={{ marginBottom: 12 }}
+            type={remoteAccess.published ? 'info' : 'warning'}
+            showIcon
+            message={remoteAccess.published ? t('remotePortReady', remoteAccess) : t('remotePortTitle')}
+            description={
+              remoteAccess.published ? undefined : (
+                <div>
+                  <div>
+                    {t('remotePortBody', {
+                      appServers: remoteAccess.appServers,
+                      domains: remoteAccess.domains,
+                      accessServers: remoteAccess.accessServers,
+                      reach: remoteAccess.reach,
+                    })}
+                  </div>
+                  <div style={{ marginTop: 8 }}>{t('remotePortNeedValue')}</div>
+                  {isAdmin ? (
+                    <Button style={{ marginTop: 8 }} onClick={() => void assignSuggestedHostPort()}>
+                      {t('remotePortAction')}
+                    </Button>
+                  ) : null}
+                </div>
+              )
+            }
+          />
+        ) : null}
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           {portMappings.length === 0 ? (
             <Typography.Text type="secondary">{t('noPortMappings')}</Typography.Text>
@@ -1486,7 +1619,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                       max={65535}
                       value={mapping.hostPort}
                       disabled={!isAdmin}
-                      status={status === 'unavailable' ? 'error' : undefined}
+                      status={
+                        status === 'unavailable'
+                          ? 'error'
+                          : remoteAccess && !remoteAccess.published
+                            ? 'warning'
+                            : undefined
+                      }
                       onChange={(value) => {
                         const next = [...portMappings];
                         next[index] = { ...next[index], hostPort: value ?? 0 };
