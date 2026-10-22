@@ -33,6 +33,7 @@ nlohmann::json serverToJson(const Server& server) {
       {"ip", server.ip},
       {"lastSeenAt", server.lastSeenAt},
       {"status", server.status},
+      {"icon", server.icon},
   };
 }
 

@@ -187,10 +187,11 @@ export function ApplicationsSector({
                   <Tooltip title={t('iconEditTitle')}>
                     <button
                       type="button"
-                      style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+                      className="hc-row-icon"
+                      aria-label={t('iconEditTitle')}
                       onClick={() => setIconEdit(a)}
                     >
-                      <AppIcon icon={a.icon} name={a.name} size={22} />
+                      <AppIcon icon={a.icon} name={a.name} size={30} />
                     </button>
                   </Tooltip>
                   <span className="hc-row__name" title={a.name}>

@@ -16,6 +16,24 @@ import ServerDetailPage from './ServerDetailPage';
 import UserDetailPage from './UserDetailPage';
 import '../dashboard/dashboard.css';
 
+// A select, dropdown, date picker, modal or confirm dialog should consume ESC itself.
+function overlayWantsEscape() {
+  const nodes = document.querySelectorAll(
+    '.ant-modal-wrap, .ant-select-dropdown, .ant-dropdown, .ant-picker-dropdown, .swal2-container',
+  );
+  return Array.from(nodes).some((node) => {
+    if (
+      node.classList.contains('ant-select-dropdown-hidden') ||
+      node.classList.contains('ant-dropdown-hidden') ||
+      node.classList.contains('ant-picker-dropdown-hidden')
+    ) {
+      return false;
+    }
+    const style = window.getComputedStyle(node);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  });
+}
+
 type DrawerState =
   | { kind: 'app'; id: number }
   | { kind: 'server'; id: number }
@@ -36,14 +54,18 @@ export default function DashboardPage() {
     return () => presence.close();
   }, []);
 
-  // Close the drawer when pressing the [ESC] key.
+  // Close the drawer on ESC no matter which element inside it has focus. Capture runs
+  // before xterm and other widgets stop the event. Nested overlays keep ESC for themselves.
   useEffect(() => {
     if (!drawer) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDrawer();
+      if (event.key !== 'Escape' || overlayWantsEscape()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeDrawer();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [drawer, closeDrawer]);
 
   const userInitial = (profile?.name || profile?.email || 'U').slice(0, 1).toUpperCase();

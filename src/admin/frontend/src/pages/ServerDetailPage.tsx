@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import api from '../api/client';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
+import { AppIcon, IconEditor } from '../components/IconEditor';
 import { connectTerminal, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
 
@@ -51,6 +52,7 @@ type Server = {
   name: string;
   ip: string;
   status: string;
+  icon?: string;
   lastSeenAt?: string;
 };
 
@@ -214,6 +216,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const [metrics, setMetrics] = useState<ServerMetrics>({});
   const [rotating, setRotating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [iconOpen, setIconOpen] = useState(false);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
   const [editForm] = Form.useForm();
 
@@ -276,6 +279,13 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
     }
   };
 
+  const saveIcon = async (icon: string) => {
+    const { data } = await api.patch(`/servers/${id}`, { icon });
+    setServer((current) => (current ? { ...current, icon: data.icon } : current));
+    setIconOpen(false);
+    message.success(t('iconSaved'));
+  };
+
   if (!server || !id) return null;
 
   return (
@@ -290,6 +300,16 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <Tooltip title={t('iconEditTitle')}>
+              <button
+                type="button"
+                aria-label={t('iconEditTitle')}
+                onClick={() => setIconOpen(true)}
+                style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+              >
+                <AppIcon icon={server.icon} name={server.name} size={44} />
+              </button>
+            </Tooltip>
             <Typography.Title level={3} style={{ color: '#0A2540', margin: 0 }}>
               {server.name}
             </Typography.Title>
@@ -469,6 +489,13 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           </Form.Item>
         </Form>
       </Modal>
+      <IconEditor
+        open={iconOpen}
+        value={server.icon}
+        name={server.name}
+        onCancel={() => setIconOpen(false)}
+        onSave={saveIcon}
+      />
     </div>
   );
 }

@@ -466,7 +466,7 @@ bool Repositories::userHasBaseDomain(int64_t userId, int64_t domainId) {
 std::vector<Server> Repositories::listHealthyServersForUser(int64_t userId) {
   std::vector<Server> rows;
   SQLite::Statement st(database_.db(),
-                       "SELECT s.id,s.name,s.ip,s.agent_token_hash,COALESCE(s.last_seen_at,''),s.status "
+                       "SELECT s.id,s.name,s.ip,s.agent_token_hash,COALESCE(s.last_seen_at,''),s.status,COALESCE(s.icon,'') "
                        "FROM servers s INNER JOIN user_servers us ON us.server_id=s.id "
                        "WHERE us.user_id=? AND s.status='online'");
   st.bind(1, userId);
@@ -478,6 +478,7 @@ std::vector<Server> Repositories::listHealthyServersForUser(int64_t userId) {
     s.agentTokenHash = st.getColumn(3).getString();
     s.lastSeenAt = st.getColumn(4).getString();
     s.status = st.getColumn(5).getString();
+    s.icon = st.getColumn(6).getString();
     rows.push_back(s);
   }
   return rows;
@@ -489,7 +490,7 @@ Page<Server> Repositories::listServers(const ListQuery& query) {
   const int pageSize = clampPageSize(query.pageSize);
   const int offset = (std::max(1, query.page) - 1) * pageSize;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status "
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') "
                        "FROM servers ORDER BY name ASC LIMIT ? OFFSET ?");
   st.bind(1, pageSize);
   st.bind(2, offset);
@@ -501,6 +502,7 @@ Page<Server> Repositories::listServers(const ListQuery& query) {
     s.agentTokenHash = st.getColumn(3).getString();
     s.lastSeenAt = st.getColumn(4).getString();
     s.status = st.getColumn(5).getString();
+    s.icon = st.getColumn(6).getString();
     page.rows.push_back(s);
   }
   return page;
@@ -508,7 +510,7 @@ Page<Server> Repositories::listServers(const ListQuery& query) {
 
 std::optional<Server> Repositories::findServerById(int64_t id) {
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status FROM servers WHERE id=?");
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') FROM servers WHERE id=?");
   st.bind(1, id);
   if (!st.executeStep()) {
     return std::nullopt;
@@ -520,12 +522,13 @@ std::optional<Server> Repositories::findServerById(int64_t id) {
   s.agentTokenHash = st.getColumn(3).getString();
   s.lastSeenAt = st.getColumn(4).getString();
   s.status = st.getColumn(5).getString();
+  s.icon = st.getColumn(6).getString();
   return s;
 }
 
 std::optional<Server> Repositories::findServerByTokenHash(const std::string& hash) {
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status FROM servers WHERE agent_token_hash=?");
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') FROM servers WHERE agent_token_hash=?");
   st.bind(1, hash);
   if (!st.executeStep()) {
     return std::nullopt;
@@ -537,12 +540,13 @@ std::optional<Server> Repositories::findServerByTokenHash(const std::string& has
   s.agentTokenHash = st.getColumn(3).getString();
   s.lastSeenAt = st.getColumn(4).getString();
   s.status = st.getColumn(5).getString();
+  s.icon = st.getColumn(6).getString();
   return s;
 }
 
 std::optional<Server> Repositories::findServerByName(const std::string& name) {
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status FROM servers WHERE name=?");
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') FROM servers WHERE name=?");
   st.bind(1, name);
   if (!st.executeStep()) {
     return std::nullopt;
@@ -554,6 +558,7 @@ std::optional<Server> Repositories::findServerByName(const std::string& name) {
   s.agentTokenHash = st.getColumn(3).getString();
   s.lastSeenAt = st.getColumn(4).getString();
   s.status = st.getColumn(5).getString();
+  s.icon = st.getColumn(6).getString();
   return s;
 }
 
@@ -570,12 +575,13 @@ int64_t Repositories::createServer(const Server& server) {
 
 void Repositories::updateServer(const Server& server) {
   SQLite::Statement st(database_.db(),
-                       "UPDATE servers SET name=?, ip=?, agent_token_hash=?, status=? WHERE id=?");
+                       "UPDATE servers SET name=?, ip=?, agent_token_hash=?, status=?, icon=? WHERE id=?");
   st.bind(1, server.name);
   st.bind(2, server.ip);
   st.bind(3, server.agentTokenHash);
   st.bind(4, server.status);
-  st.bind(5, server.id);
+  st.bind(5, server.icon);
+  st.bind(6, server.id);
   st.exec();
 }
 
@@ -617,7 +623,7 @@ void Repositories::deleteServer(int64_t id) {
 std::vector<Server> Repositories::autocompleteServers(const std::string& q) {
   std::vector<Server> rows;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status "
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') "
                        "FROM servers WHERE name LIKE ? OR ip LIKE ? LIMIT 20");
   const std::string like = "%" + q + "%";
   st.bind(1, like);
@@ -630,6 +636,7 @@ std::vector<Server> Repositories::autocompleteServers(const std::string& q) {
     s.agentTokenHash = st.getColumn(3).getString();
     s.lastSeenAt = st.getColumn(4).getString();
     s.status = st.getColumn(5).getString();
+    s.icon = st.getColumn(6).getString();
     rows.push_back(s);
   }
   return rows;
@@ -638,7 +645,7 @@ std::vector<Server> Repositories::autocompleteServers(const std::string& q) {
 std::vector<Server> Repositories::listServersHostingUserApplications(int64_t userId) {
   std::vector<Server> rows;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status "
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') "
                        "FROM servers WHERE id IN ("
                        "SELECT r.server_id FROM replicas r "
                        "INNER JOIN applications a ON a.id=r.application_id WHERE a.created_by=?) "
@@ -652,6 +659,7 @@ std::vector<Server> Repositories::listServersHostingUserApplications(int64_t use
     s.agentTokenHash = st.getColumn(3).getString();
     s.lastSeenAt = st.getColumn(4).getString();
     s.status = st.getColumn(5).getString();
+    s.icon = st.getColumn(6).getString();
     rows.push_back(s);
   }
   return rows;
@@ -660,7 +668,7 @@ std::vector<Server> Repositories::listServersHostingUserApplications(int64_t use
 std::vector<Server> Repositories::listHealthyServers() {
   std::vector<Server> rows;
   SQLite::Statement st(database_.db(),
-                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status "
+                       "SELECT id,name,ip,agent_token_hash,COALESCE(last_seen_at,''),status,COALESCE(icon,'') "
                        "FROM servers WHERE status='online'");
   while (st.executeStep()) {
     Server s;
@@ -670,6 +678,7 @@ std::vector<Server> Repositories::listHealthyServers() {
     s.agentTokenHash = st.getColumn(3).getString();
     s.lastSeenAt = st.getColumn(4).getString();
     s.status = st.getColumn(5).getString();
+    s.icon = st.getColumn(6).getString();
     rows.push_back(s);
   }
   return rows;

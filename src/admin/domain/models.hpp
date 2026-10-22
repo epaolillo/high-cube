@@ -35,6 +35,7 @@ struct Server {
   std::string agentTokenHash;
   std::string lastSeenAt;
   std::string status = "pending";
+  std::string icon;
 };
 
 struct BaseDomain {

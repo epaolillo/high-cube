@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { confirmDestructive } from '../components/confirmDestructive';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
+import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
 import { useDashboardState } from './DashboardState';
 import { useServerFilter } from './ServerFilter';
@@ -26,6 +27,7 @@ type ServerRow = {
   name: string;
   ip?: string;
   status: string;
+  icon?: string;
   lastSeenAt?: string;
   metrics?: ServerMetrics;
 };
@@ -55,6 +57,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [modal, setModal] = useState<{ id?: number } | null>(null);
+  const [iconEdit, setIconEdit] = useState<ServerRow | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -178,6 +181,22 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                   />
                 )}
                 <span className="hc-dot" data-on={s.status === 'online'} />
+                {readOnly ? (
+                  <span className="hc-row-icon" style={{ cursor: 'default' }}>
+                    <AppIcon icon={s.icon} name={s.name} size={30} />
+                  </span>
+                ) : (
+                  <Tooltip title={t('iconEditTitle')}>
+                    <button
+                      type="button"
+                      className="hc-row-icon"
+                      aria-label={t('iconEditTitle')}
+                      onClick={() => setIconEdit(s)}
+                    >
+                      <AppIcon icon={s.icon} name={s.name} size={30} />
+                    </button>
+                  </Tooltip>
+                )}
                 <span className="hc-row__name" title={s.name}>
                   {s.name}
                 </span>
@@ -241,6 +260,21 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
           ))
         )}
       </div>
+
+      <IconEditor
+        open={!!iconEdit}
+        value={iconEdit?.icon}
+        name={iconEdit?.name}
+        onCancel={() => setIconEdit(null)}
+        onSave={async (icon) => {
+          if (iconEdit) {
+            await api.patch(`/servers/${iconEdit.id}`, { icon });
+            message.success(t('iconSaved'));
+          }
+          setIconEdit(null);
+          refresh();
+        }}
+      />
 
       <Modal
         title={modal?.id ? t('edit') : t('create')}

@@ -239,6 +239,7 @@ nlohmann::json ServerService::listHostingUserApplications(int64_t userId) {
     rows.push_back({{"id", server.id},
                     {"name", server.name},
                     {"status", server.status},
+                    {"icon", server.icon},
                     {"metrics", snapshot(server.id)}});
   }
   return {{"rows", rows}, {"total", rows.size()}};
@@ -284,6 +285,14 @@ nlohmann::json ServerService::update(int64_t id, const nlohmann::json& body) {
       throw std::runtime_error("IP is required");
     }
     server->ip = ip;
+  }
+  if (body.contains("icon") && !body.at("icon").is_null()) {
+    const auto icon = body.at("icon").get<std::string>();
+    // Same cap as application icons: a catalog path or a square data URL.
+    if (icon.size() > 500000) {
+      throw std::invalid_argument("icon is too large");
+    }
+    server->icon = icon;
   }
   ctx_.repos->updateServer(*server);
 

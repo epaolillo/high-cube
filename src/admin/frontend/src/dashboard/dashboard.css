@@ -298,6 +298,19 @@
   box-shadow: 0 0 0 2px rgba(9, 130, 93, 0.18);
 }
 
+/* Icon in a dashboard row. Servers and applications share this 30px box. */
+.hc-row-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+}
+
 .hc-avatar-sq {
   flex: 0 0 auto;
   width: 26px;
