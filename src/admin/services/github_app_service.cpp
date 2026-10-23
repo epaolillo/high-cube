@@ -4,6 +4,8 @@
 #include "github/github_http_client.hpp"
 
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cctype>
@@ -44,6 +46,77 @@ std::string trimSlash(std::string origin) {
     origin.pop_back();
   }
   return origin;
+}
+
+bool isLoopbackUrl(const std::string& url) {
+  return url.find("://localhost") != std::string::npos ||
+         url.find("://127.0.0.1") != std::string::npos ||
+         url.find("://[::1]") != std::string::npos;
+}
+
+std::string lowerCopy(std::string value) {
+  for (char& c : value) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return value;
+}
+
+// owner/name, without a trailing .git and without the GitHub host.
+std::string normalizeRepoName(std::string name) {
+  name = lowerCopy(std::move(name));
+  const std::string https = "https://github.com/";
+  const std::string ssh = "git@github.com:";
+  if (name.rfind(https, 0) == 0) {
+    name = name.substr(https.size());
+  } else if (name.rfind(ssh, 0) == 0) {
+    name = name.substr(ssh.size());
+  }
+  while (!name.empty() && name.back() == '/') {
+    name.pop_back();
+  }
+  if (name.size() >= 4 && name.substr(name.size() - 4) == ".git") {
+    name.resize(name.size() - 4);
+  }
+  return name;
+}
+
+std::string applicationRepo(const Application& app) {
+  if (!app.repoFullName.empty()) {
+    return normalizeRepoName(app.repoFullName);
+  }
+  return normalizeRepoName(app.repoUrl);
+}
+
+std::string toHex(const unsigned char* data, unsigned int len) {
+  static const char* digits = "0123456789abcdef";
+  std::string out;
+  out.resize(len * 2);
+  for (unsigned int i = 0; i < len; ++i) {
+    out[i * 2] = digits[data[i] >> 4];
+    out[i * 2 + 1] = digits[data[i] & 0x0F];
+  }
+  return out;
+}
+
+bool signatureMatches(const std::string& secret, const std::string& body, std::string header) {
+  header = lowerCopy(std::move(header));
+  const std::string prefix = "sha256=";
+  if (secret.empty() || header.size() != prefix.size() + 64 || header.rfind(prefix, 0) != 0) {
+    return false;
+  }
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int len = 0;
+  if (HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
+           reinterpret_cast<const unsigned char*>(body.data()), body.size(), digest, &len) ==
+      nullptr) {
+    return false;
+  }
+  const auto expected = prefix + toHex(digest, len);
+  unsigned char diff = 0;
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    diff |= static_cast<unsigned char>(expected[i] ^ header[i]);
+  }
+  return diff == 0;
 }
 
 std::string trimCopy(std::string value) {
@@ -289,11 +362,9 @@ nlohmann::json GithubAppService::createManifest(const nlohmann::json& body, cons
   const auto redirectUrl = origin + "/integrations/github/" + std::to_string(pending.id) + "/callback";
   const auto setupUrl = origin + "/integrations/github/" + std::to_string(pending.id) + "/setup";
 
-  // GitHub requires hook_attributes.url even when the webhook is inactive, and
-  // rejects localhost. Use a public placeholder until webhooks are implemented.
-  const bool loopback = origin.find("://localhost") != std::string::npos ||
-                        origin.find("://127.0.0.1") != std::string::npos ||
-                        origin.find("://[::1]") != std::string::npos;
+  // GitHub rejects a localhost webhook URL. A public origin subscribes to push so a
+  // commit on the tracked branch redeploys the application.
+  const bool loopback = isLoopbackUrl(origin);
   const auto hookUrl =
       loopback ? std::string("https://example.com/high-cube/webhook")
                : origin + "/api/github-apps/" + std::to_string(pending.id) + "/webhook";
@@ -301,11 +372,12 @@ nlohmann::json GithubAppService::createManifest(const nlohmann::json& body, cons
   nlohmann::json manifest = {
       {"name", name},
       {"url", origin.empty() ? "https://example.com" : origin},
-      {"hook_attributes", {{"url", hookUrl}, {"active", false}}},
+      {"hook_attributes", {{"url", hookUrl}, {"active", !loopback}}},
       {"redirect_url", redirectUrl},
       {"setup_url", setupUrl},
       {"callback_urls", nlohmann::json::array({redirectUrl})},
       {"public", false},
+      {"default_events", nlohmann::json::array({"push"})},
       {"default_permissions", {{"contents", "read"}, {"metadata", "read"}}},
   };
 
@@ -488,6 +560,101 @@ nlohmann::json GithubAppService::listBranches(int64_t id, const std::string& rep
     rows.push_back({{"name", branch.value("name", "")}});
   }
   return {{"rows", rows}};
+}
+
+nlohmann::json GithubAppService::handleWebhook(int64_t id, const std::string& event,
+                                                    const std::string& signature,
+                                                    const std::string& body) {
+  auto app = ctx_.repos->findGithubAppById(id);
+  if (!app) {
+    throw std::runtime_error("GitHub App not found");
+  }
+  if (!signatureMatches(app->webhookSecret, body, signature)) {
+    throw ForbiddenError("Invalid webhook signature");
+  }
+  if (event != "push") {
+    return {{"ok", true}, {"ignored", event.empty() ? "ping" : event}};
+  }
+
+  const auto payload = nlohmann::json::parse(body.empty() ? "{}" : body);
+  if (payload.value("deleted", false)) {
+    return {{"ok", true}, {"ignored", "branch deleted"}};
+  }
+  const auto ref = payload.value("ref", "");
+  const std::string heads = "refs/heads/";
+  if (ref.rfind(heads, 0) != 0) {
+    return {{"ok", true}, {"ignored", "not a branch"}};
+  }
+  const auto branch = ref.substr(heads.size());
+  const auto repo = normalizeRepoName(payload.value("repository", nlohmann::json::object())
+                                          .value("full_name", ""));
+  if (repo.empty() || branch.empty()) {
+    throw std::invalid_argument("Push payload is missing repository or branch");
+  }
+  const auto sha = payload.value("after", "");
+  std::string message;
+  if (payload.contains("head_commit") && payload.at("head_commit").is_object()) {
+    message = payload.at("head_commit").value("message", "");
+  }
+
+  nlohmann::json redeployed = nlohmann::json::array();
+  const auto page = ctx_.repos->listApplications(ListQuery{1, 1000, "", "asc", ""});
+  for (const auto& application : page.rows) {
+    if (!application.githubAppId || *application.githubAppId != id) {
+      continue;
+    }
+    if (applicationRepo(application) != repo || application.branch != branch) {
+      continue;
+    }
+    if (!ctx_.deployments) {
+      throw std::runtime_error("Deployment service is not available");
+    }
+    User actor;
+    actor.id = application.createdBy;
+    spdlog::info("github push {}@{} redeploys {}", repo, branch, application.name);
+    ctx_.deployments->create(application.id, actor, false, sha, message);
+    redeployed.push_back(application.id);
+  }
+  if (redeployed.empty()) {
+    spdlog::info("github push {}@{} matches no application", repo, branch);
+  }
+  return {{"ok", true}, {"redeployed", redeployed}};
+}
+
+void GithubAppService::ensurePushWebhooks() {
+  std::string configured = trimSlash(ctx_.config.publicUrl);
+  const bool publicOrigin = !configured.empty() && !isLoopbackUrl(configured) &&
+                            (configured.rfind("https://", 0) == 0 || configured.rfind("http://", 0) == 0);
+  const auto page = ctx_.repos->listGithubApps(ListQuery{1, 1000, "", "asc", ""});
+  for (const auto& app : page.rows) {
+    if (!app.appId || app.privateKeyPem.empty() || app.webhookSecret.empty()) {
+      continue;
+    }
+    try {
+      const auto jwt = authSingleton().appJwt(app);
+      std::string url;
+      // public_url wins when it is a real origin. Otherwise keep the URL stored on the
+      // GitHub App, which was the browser origin used to create it.
+      if (publicOrigin && configured.find("://admin.example.com") == std::string::npos &&
+          configured.find("example.com/high-cube") == std::string::npos) {
+        url = configured + "/api/github-apps/" + std::to_string(app.id) + "/webhook";
+      } else {
+        const auto current = httpSingleton().getJson("/app/hook/config", jwt);
+        url = current.value("url", "");
+      }
+      if (url.empty() || isLoopbackUrl(url) || url.find("example.com") != std::string::npos) {
+        spdlog::warn("github app {} has no public webhook url; set public_url and restart", app.name);
+        continue;
+      }
+      httpSingleton().patchJson(
+          "/app", jwt,
+          {{"hook_attributes", {{"url", url}, {"active", true}}},
+           {"events", nlohmann::json::array({"push"})}});
+      spdlog::info("github app {} push webhook enabled at {}", app.name, url);
+    } catch (const std::exception& ex) {
+      spdlog::error("could not enable push webhook for github app {}: {}", app.name, ex.what());
+    }
+  }
 }
 
 void GithubAppService::remove(int64_t id, const User& actor) {

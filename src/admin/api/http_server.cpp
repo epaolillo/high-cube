@@ -5,6 +5,8 @@
 #include <boost/beast/websocket.hpp>
 #include <spdlog/spdlog.h>
 
+#include <optional>
+
 namespace highcube::admin {
 namespace {
 
@@ -26,11 +28,15 @@ public:
 private:
   void doRead() {
     auto self = shared_from_this();
-    http::async_read(stream_, buffer_, request_,
+    // GitHub push payloads can be larger than Beast's 1MB default.
+    parser_.emplace();
+    parser_->body_limit(25 * 1024 * 1024);
+    http::async_read(stream_, buffer_, *parser_,
                      [self](beast::error_code ec, std::size_t) {
                        if (ec) {
                          return;
                        }
+                       self->request_ = self->parser_->release();
                        self->handleRequest();
                      });
   }
@@ -65,6 +71,12 @@ private:
         })) {
       return;
     }
+    if (agentHub_) {
+      if (auto binary = agentHub_->serveAgentBinary(request_)) {
+        writeResponse(std::move(*binary));
+        return;
+      }
+    }
 
     writeResponse(router_.handle(std::move(request_)));
   }
@@ -82,6 +94,7 @@ private:
 
   beast::tcp_stream stream_;
   beast::flat_buffer buffer_;
+  std::optional<http::request_parser<http::string_body>> parser_;
   Request request_;
   Router& router_;
   std::shared_ptr<AgentHub> agentHub_;

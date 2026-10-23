@@ -71,6 +71,7 @@ DerivedActivity deriveActivity(const std::string& method, const std::string& rou
       {"POST /api/servers", "server.create|server"},
       {"PATCH /api/servers/:id", "server.update|server"},
       {"POST /api/servers/:id/token", "server.rotateToken|server"},
+      {"POST /api/servers/:id/agent-update", "server.updateAgent|server"},
       {"DELETE /api/servers/:id", "server.delete|server"},
       {"POST /api/servers/:id/terminal/sessions", "server.terminalOpen|server"},
       {"DELETE /api/servers/:id/terminal/sessions/:streamId", "server.terminalClose|server"},

@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -65,6 +66,13 @@ public:
   void renameVolumeOnServers(const std::string& fromName, const std::string& toName,
                              const std::string& hostPath);
   void disconnectServer(int64_t serverId);
+  // hc-agent binary shipped next to hc-admin. The update button serves this file.
+  void setAgentBinaryPath(std::string path);
+  // Tells the connected agent to replace its binary with this build and restart.
+  void updateAgent(int64_t serverId);
+  // GET /api/agents/binary?token=... — one-time download started by updateAgent.
+  std::optional<http::response<http::string_body>> serveAgentBinary(
+      const http::request<http::string_body>& request);
   void checkOfflineServers();
   // Complete container-metrics rounds the server's current session finished after `since`.
   // A replica is only proven gone when such rounds keep arriving without it.
@@ -167,6 +175,14 @@ private:
   };
   std::unordered_map<std::string, DbWaiter> dbWaiters_;
   std::atomic<std::uint64_t> dbWaiterSeq_{0};
+
+  std::string agentBinaryPath_;
+  struct AgentBinaryTicket {
+    std::string sha256;
+    std::shared_ptr<std::string> bytes;
+    std::chrono::steady_clock::time_point expires;
+  };
+  std::unordered_map<std::string, AgentBinaryTicket> agentBinaryTickets_;
 };
 
 }  // namespace highcube::admin

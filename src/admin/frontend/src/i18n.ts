@@ -123,6 +123,12 @@ const resources = {
       agentTokenHint:
         'Copy this token now. It is shown only once. Update hc-agent.conf and restart the agent.',
       agentTokenRotated: 'Token regenerated',
+      updateAgent: 'Update agent',
+      updateAgentTitle: 'Update the agent on {{name}}?',
+      updateAgentBody:
+        'Replaces hc-agent with the binary running next to this control plane and restarts the service. Containers keep running. The server goes offline for a few seconds while the agent reconnects.',
+      updateAgentStarted: 'Agent update started. It will reconnect in a few seconds.',
+      updateAgentOffline: 'The agent is offline',
       regenerateTokenConfirmTitle: 'Regenerate agent token?',
       regenerateTokenConfirmBody:
         'The current token stops working immediately. The agent on "{{name}}" will disconnect and stay offline until you update agent_token in hc-agent.conf and restart the agent.',
@@ -439,6 +445,7 @@ const resources = {
       activityAction_server_create: 'Created a server',
       activityAction_server_update: 'Updated a server',
       activityAction_server_rotateToken: 'Regenerated an agent token',
+      activityAction_server_updateAgent: 'Updated an agent',
       activityAction_server_delete: 'Deleted a server',
       activityAction_server_terminalOpen: 'Opened a host terminal',
       activityAction_server_terminalClose: 'Closed a host terminal',
@@ -632,6 +639,12 @@ const resources = {
       agentTokenHint:
         'Copiá este token ahora. Se muestra una sola vez. Actualizá hc-agent.conf y reiniciá el agente.',
       agentTokenRotated: 'Token regenerado',
+      updateAgent: 'Actualizar agente',
+      updateAgentTitle: '¿Actualizar el agente de {{name}}?',
+      updateAgentBody:
+        'Reemplaza hc-agent por el binario que está junto a este panel y reinicia el servicio. Los contenedores siguen corriendo. El servidor queda offline unos segundos hasta que el agente se reconecta.',
+      updateAgentStarted: 'Actualización iniciada. El agente se reconecta en unos segundos.',
+      updateAgentOffline: 'El agente está desconectado',
       regenerateTokenConfirmTitle: '¿Regenerar el token del agente?',
       regenerateTokenConfirmBody:
         'El token actual deja de funcionar de inmediato. El agente de "{{name}}" se desconectará y quedará offline hasta que actualices agent_token en hc-agent.conf y reinicies el agente.',
@@ -950,6 +963,7 @@ const resources = {
       activityAction_server_create: 'Creó un servidor',
       activityAction_server_update: 'Actualizó un servidor',
       activityAction_server_rotateToken: 'Regeneró un token de agente',
+      activityAction_server_updateAgent: 'Actualizó un agente',
       activityAction_server_delete: 'Eliminó un servidor',
       activityAction_server_terminalOpen: 'Abrió una terminal del host',
       activityAction_server_terminalClose: 'Cerró una terminal del host',

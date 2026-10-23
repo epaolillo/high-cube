@@ -231,6 +231,19 @@
   font-weight: 600;
   color: #0a2540;
 }
+.hc-row__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.hc-row__title .hc-row__name {
+  flex: 0 1 auto;
+}
+.hc-row__title .hc-iconbtn {
+  flex: 0 0 auto;
+}
 /* Access point sits under the hostname, inside the existing row padding. */
 .hc-domain {
   position: relative;

@@ -1,4 +1,11 @@
-import { DeleteOutlined, EditOutlined, KeyOutlined, PlusOutlined, SlidersOutlined } from '@ant-design/icons';
+import {
+  CloudDownloadOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  KeyOutlined,
+  PlusOutlined,
+  SlidersOutlined,
+} from '@ant-design/icons';
 import { Form, Input, Modal, Tooltip, Typography, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -96,6 +103,18 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
       refresh();
       showAgentToken(t, data.agentToken);
     }
+  };
+  const updateAgent = (s: ServerRow) => {
+    Modal.confirm({
+      title: t('updateAgentTitle', { name: s.name }),
+      content: t('updateAgentBody'),
+      okText: t('updateAgent'),
+      cancelText: t('cancel'),
+      onOk: async () => {
+        await api.post(`/servers/${s.id}/agent-update`);
+        message.success(t('updateAgentStarted'));
+      },
+    });
   };
   const regenerate = (s: ServerRow) =>
     confirmRegenerateToken(t, s.name, async () => {
@@ -197,8 +216,24 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                     </button>
                   </Tooltip>
                 )}
-                <span className="hc-row__name" title={s.name}>
-                  {s.name}
+                <span className="hc-row__title">
+                  <span className="hc-row__name" title={s.name}>
+                    {s.name}
+                  </span>
+                  {!readOnly && (
+                    <Tooltip title={s.status === 'online' ? t('updateAgent') : t('updateAgentOffline')}>
+                      <span>
+                        <button
+                          type="button"
+                          className="hc-iconbtn"
+                          disabled={s.status !== 'online'}
+                          onClick={() => updateAgent(s)}
+                        >
+                          <CloudDownloadOutlined />
+                        </button>
+                      </span>
+                    </Tooltip>
+                  )}
                 </span>
                 {!readOnly && (
                   <>

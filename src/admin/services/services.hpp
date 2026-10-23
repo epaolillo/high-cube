@@ -122,6 +122,8 @@ public:
   nlohmann::json create(const nlohmann::json& body);
   nlohmann::json update(int64_t id, const nlohmann::json& body);
   nlohmann::json rotateToken(int64_t id);
+  // Asks the connected agent to install the hc-agent binary that sits next to hc-admin.
+  nlohmann::json updateAgent(int64_t id);
   void remove(int64_t id);
   nlohmann::json autocomplete(const std::string& q);
   // Downsampled chart ({series, latest}) instead of every raw 1-second sample.
@@ -214,7 +216,10 @@ public:
   explicit DeploymentService(AppContext& ctx);
   nlohmann::json list(int64_t applicationId, const ListQuery& query);
   nlohmann::json get(int64_t id);
-  nlohmann::json create(int64_t applicationId, const User& actor, bool noCache = false);
+  // gitSha and gitMessage record the commit that triggered the deploy. Empty keeps the
+  // previous behavior: the agent checks out the tip of the configured branch.
+  nlohmann::json create(int64_t applicationId, const User& actor, bool noCache = false,
+                        const std::string& gitSha = {}, const std::string& gitMessage = {});
   nlohmann::json logs(int64_t id, int since, const std::string& phase = "");
   nlohmann::json listReplicas(int64_t applicationId, const ListQuery& query);
   nlohmann::json getReplica(int64_t id);
@@ -275,6 +280,12 @@ public:
   nlohmann::json dockerfilePorts(const User& actor, std::optional<int64_t> githubAppId,
                                  const std::string& repo, const std::string& repoUrl,
                                  const std::string& branch, const std::string& path);
+  // GitHub calls this without a user session. The signature is X-Hub-Signature-256.
+  nlohmann::json handleWebhook(int64_t id, const std::string& event, const std::string& signature,
+                               const std::string& body);
+  // Turns on the push webhook for every registered app. Apps created earlier shipped
+  // with the hook inactive, so a push never reached hc-admin.
+  void ensurePushWebhooks();
   void remove(int64_t id, const User& actor);
   std::string installationAccessToken(int64_t githubAppId);
 

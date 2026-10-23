@@ -239,7 +239,8 @@ nlohmann::json DeploymentService::get(int64_t id) {
   return deploymentToJson(*deployment);
 }
 
-nlohmann::json DeploymentService::create(int64_t applicationId, const User& actor, bool noCache) {
+nlohmann::json DeploymentService::create(int64_t applicationId, const User& actor, bool noCache,
+                                             const std::string& gitSha, const std::string& gitMessage) {
   auto app = ctx_.repos->findApplicationById(applicationId);
   if (!app) {
     throw std::runtime_error("Application not found");
@@ -263,6 +264,8 @@ nlohmann::json DeploymentService::create(int64_t applicationId, const User& acto
   deployment.status = "pending";
   deployment.createdBy = actor.id;
   deployment.noCache = noCache;
+  deployment.gitSha = gitSha;
+  deployment.gitMessage = gitMessage;
   deployment.id = ctx_.repos->createDeployment(deployment);
 
   app->desiredReplicas = std::max(1, app->desiredReplicas);

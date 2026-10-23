@@ -313,6 +313,17 @@ nlohmann::json ServerService::update(int64_t id, const nlohmann::json& body) {
   return serverToJson(*ctx_.repos->findServerById(id));
 }
 
+nlohmann::json ServerService::updateAgent(int64_t id) {
+  if (!ctx_.repos->findServerById(id)) {
+    throw std::runtime_error("Server not found");
+  }
+  if (!ctx_.agentHub) {
+    throw std::runtime_error("Agent hub is not available");
+  }
+  ctx_.agentHub->updateAgent(id);
+  return {{"status", "started"}};
+}
+
 nlohmann::json ServerService::rotateToken(int64_t id) {
   auto server = ctx_.repos->findServerById(id);
   if (!server) {

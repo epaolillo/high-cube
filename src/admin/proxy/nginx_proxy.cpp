@@ -160,6 +160,7 @@ void NginxProxy::renderAdminSite() {
       << "  root " << root << ";\n"
       << "  index index.html;\n"
       << "  location /api/ {\n"
+      << "    client_max_body_size 25m;\n"
       << "    proxy_pass http://127.0.0.1:" << config_.httpPort << ";\n"
       << "    proxy_http_version 1.1;\n"
       << "    proxy_set_header Upgrade $http_upgrade;\n"

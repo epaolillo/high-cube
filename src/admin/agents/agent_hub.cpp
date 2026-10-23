@@ -11,6 +11,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <ctime>
 #include <iomanip>
 #include <random>
@@ -1068,6 +1070,135 @@ void AgentHub::restartReplica(int64_t replicaId) {
   order.set_replica_id(replica->id);
   order.set_container_id(replica->containerId);
   session->send(makeEnvelope(::highcube::RESTART_REPLICA, order));
+}
+
+void AgentHub::setAgentBinaryPath(std::string path) { agentBinaryPath_ = std::move(path); }
+
+void AgentHub::updateAgent(int64_t serverId) {
+  auto session = sessionForServer(serverId);
+  if (!session) {
+    throw std::runtime_error("Agent is not connected");
+  }
+  if (agentBinaryPath_.empty() || !std::filesystem::is_regular_file(agentBinaryPath_)) {
+    throw std::runtime_error("hc-agent binary was not found next to hc-admin");
+  }
+  std::ifstream in(agentBinaryPath_, std::ios::binary);
+  if (!in) {
+    throw std::runtime_error("hc-agent binary was not found next to hc-admin");
+  }
+  auto bytes = std::make_shared<std::string>((std::istreambuf_iterator<char>(in)),
+                                             std::istreambuf_iterator<char>());
+  if (bytes->empty()) {
+    throw std::runtime_error("hc-agent binary is empty");
+  }
+  const auto sha = hashToken(*bytes);
+  const auto token = randomToken(16);
+  {
+    std::lock_guard lock(mutex_);
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = agentBinaryTickets_.begin(); it != agentBinaryTickets_.end();) {
+      if (now > it->second.expires) {
+        it = agentBinaryTickets_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    agentBinaryTickets_[token] = AgentBinaryTicket{sha, bytes, now + std::chrono::minutes(2)};
+  }
+
+  // The agent already running understands host-terminal commands, so the update does not
+  // need a new wire message. The script reads admin_url from its own config, checks the
+  // checksum, replaces the binary, and restarts the service.
+  // PPID of this bash is hc-agent. Restart=always brings the new binary back after SIGTERM.
+  // A systemctl restart from inside the service would deadlock on the parent process.
+  const std::string command =
+      "export HC_AGENT_PID=\"$PPID\"; "
+      "export HC_AGENT_EXE=\"$(readlink -f /proc/$PPID/exe)\"; "
+      "export HC_AGENT_UPDATE_TOKEN='" +
+      token +
+      "'; "
+      "export HC_AGENT_UPDATE_SHA='" +
+      sha +
+      "'; "
+      "python3 -c '"
+      "import hashlib, os, pathlib, signal, ssl, urllib.request\n"
+      "exe = os.environ.get(\"HC_AGENT_EXE\", \"\")\n"
+      "token = os.environ[\"HC_AGENT_UPDATE_TOKEN\"]\n"
+      "expect = os.environ[\"HC_AGENT_UPDATE_SHA\"]\n"
+      "log = pathlib.Path(exe).resolve().with_name(\"hc-agent-update.log\") if exe else pathlib.Path(\"hc-agent-update.log\")\n"
+      "dest = exe + \".new\"\n"
+      "try:\n"
+      "    conf = pathlib.Path(exe).resolve().parent / \"hc-agent.conf\"\n"
+      "    raw = \"\"\n"
+      "    for line in conf.read_text().splitlines():\n"
+      "        if line.startswith(\"admin_url=\"):\n"
+      "            raw = line.split(\"=\", 1)[1].strip()\n"
+      "    if raw.startswith(\"wss://\"):\n"
+      "        base = \"https://\" + raw[6:]\n"
+      "    elif raw.startswith(\"ws://\"):\n"
+      "        base = \"http://\" + raw[5:]\n"
+      "    else:\n"
+      "        raise SystemExit(\"admin_url is not ws or wss\")\n"
+      "    cut = base.find(\"/api/agents/connect\")\n"
+      "    if cut >= 0:\n"
+      "        base = base[:cut]\n"
+      "    url = base.rstrip(\"/\") + \"/api/agents/binary?token=\" + token\n"
+      "    ctx = ssl._create_unverified_context()\n"
+      "    with urllib.request.urlopen(url, context=ctx, timeout=120) as resp:\n"
+      "        data = resp.read()\n"
+      "    pathlib.Path(dest).write_bytes(data)\n"
+      "    digest = hashlib.sha256(data).hexdigest()\n"
+      "    if digest != expect:\n"
+      "        raise SystemExit(\"checksum mismatch\")\n"
+      "    os.chmod(dest, 0o755)\n"
+      "    os.replace(dest, exe)\n"
+      "    log.write_text(\"replaced\\n\")\n"
+      "    os.kill(int(os.environ[\"HC_AGENT_PID\"]), signal.SIGTERM)\n"
+      "except BaseException as exc:\n"
+      "    try:\n"
+      "        os.remove(dest)\n"
+      "    except OSError:\n"
+      "        pass\n"
+      "    log.write_text(str(exc) + \"\\n\")\n"
+      "    raise\n"
+      "'";
+
+  ::highcube::OpenHostTerminal order;
+  order.set_stream_id("agent-update-" + token.substr(0, 12));
+  order.set_command(command);
+  order.set_cols(80);
+  order.set_rows(24);
+  session->send(makeEnvelope(::highcube::OPEN_HOST_TERMINAL, order));
+  spdlog::info("agent update started for server {}", serverId);
+}
+
+std::optional<http::response<http::string_body>> AgentHub::serveAgentBinary(
+    const http::request<http::string_body>& request) {
+  if (pathOnly(std::string(request.target())) != "/api/agents/binary") {
+    return std::nullopt;
+  }
+  if (request.method() != http::verb::get) {
+    return errorResponse(http::status::method_not_allowed, "Method not allowed");
+  }
+  const auto query = parseQuery(std::string(request.target()));
+  const auto itToken = query.find("token");
+  const auto token = itToken == query.end() ? std::string{} : itToken->second;
+  std::shared_ptr<std::string> bytes;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = agentBinaryTickets_.find(token);
+    if (it == agentBinaryTickets_.end() || std::chrono::steady_clock::now() > it->second.expires) {
+      return errorResponse(http::status::unauthorized, "Invalid or expired update token");
+    }
+    bytes = it->second.bytes;
+    agentBinaryTickets_.erase(it);
+  }
+  Response res{http::status::ok, request.version()};
+  res.set(http::field::content_type, "application/octet-stream");
+  res.set(http::field::cache_control, "no-store");
+  res.body() = *bytes;
+  res.prepare_payload();
+  return res;
 }
 
 void AgentHub::disconnectServer(int64_t serverId) {

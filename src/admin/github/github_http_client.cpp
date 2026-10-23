@@ -98,4 +98,14 @@ nlohmann::json GithubHttpClient::postJson(const std::string& path, const std::st
   return nlohmann::json::parse(res.body.empty() ? "{}" : res.body);
 }
 
+nlohmann::json GithubHttpClient::patchJson(const std::string& path, const std::string& bearerToken,
+                                           const nlohmann::json& body) const {
+  const auto res = request("PATCH", path, bearerToken, body.dump());
+  if (res.status < 200 || res.status >= 300) {
+    throw std::runtime_error("GitHub API PATCH " + path + " failed: HTTP " +
+                             std::to_string(res.status) + " " + res.body);
+  }
+  return nlohmann::json::parse(res.body.empty() ? "{}" : res.body);
+}
+
 }  // namespace highcube::admin

@@ -21,6 +21,8 @@ public:
   nlohmann::json getJson(const std::string& path, const std::string& bearerToken) const;
   nlohmann::json postJson(const std::string& path, const std::string& bearerToken,
                           const nlohmann::json& body) const;
+  nlohmann::json patchJson(const std::string& path, const std::string& bearerToken,
+                           const nlohmann::json& body) const;
 };
 
 }  // namespace highcube::admin

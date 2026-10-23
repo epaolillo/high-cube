@@ -245,6 +245,10 @@ void registerHandlers(Router& router, AppContext& ctx) {
                         ServerService(ctx).update(std::stoll(c.params["id"]),
                                                   nlohmann::json::parse(c.request.body())));
   });
+  router.add("POST", "/api/servers/:id/agent-update", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::accepted, ServerService(ctx).updateAgent(std::stoll(c.params["id"])));
+  });
   router.add("POST", "/api/servers/:id/token", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return jsonResponse(http::status::ok, ServerService(ctx).rotateToken(std::stoll(c.params["id"])));
@@ -290,6 +294,13 @@ void registerHandlers(Router& router, AppContext& ctx) {
   router.add("GET", "/api/github-apps/:id", true, [&](RequestContext& c) {
     return jsonResponse(http::status::ok,
                         ctx.githubApps->get(std::stoll(c.params["id"]), *c.user));
+  });
+  router.add("POST", "/api/github-apps/:id/webhook", false, [&](RequestContext& c) {
+    return jsonResponse(http::status::ok,
+                        ctx.githubApps->handleWebhook(std::stoll(c.params["id"]),
+                                                      std::string(c.request["X-GitHub-Event"]),
+                                                      std::string(c.request["X-Hub-Signature-256"]),
+                                                      c.request.body()));
   });
   router.add("POST", "/api/github-apps/manifest", true, [&](RequestContext& c) {
     return jsonResponse(http::status::created,

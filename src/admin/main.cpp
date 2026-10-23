@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -83,6 +84,8 @@ int main(int argc, char** argv) {
     // Agent sessions live in memory, so no server is connected until its agent registers again.
     ctx.repos->markOnlineServersOffline();
     ctx.agentHub = std::make_shared<AgentHub>(ioc, *ctx.repos);
+    ctx.agentHub->setAgentBinaryPath(
+        (std::filesystem::path(config.binaryPath).parent_path() / "hc-agent").string());
     ctx.agentHub->setAuth(ctx.auth.get());
     ctx.presence = std::make_shared<PresenceHub>(ioc, *ctx.repos, *ctx.auth);
     ctx.placement = std::make_unique<PlacementService>(ctx);
@@ -106,6 +109,8 @@ int main(int argc, char** argv) {
     HttpServer server(ioc, "0.0.0.0", static_cast<unsigned short>(config.httpPort), router,
                       ctx.agentHub, terminalPolling, ctx.presence);
     server.start();
+    // Listen first so GitHub's ping, sent when the hook is turned on, can be accepted.
+    ctx.githubApps->ensurePushWebhooks();
     spdlog::info("hc-admin listening on :{}", config.httpPort);
 
     net::steady_timer offlineTimer(ioc);
