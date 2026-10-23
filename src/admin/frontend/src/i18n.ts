@@ -213,6 +213,9 @@ const resources = {
       branch: 'Branch',
       baseDirectory: 'Base directory',
       dockerfilePath: 'Dockerfile path',
+      useGpu: 'Use GPU',
+      useGpuHint:
+        'Pass the host NVIDIA GPU into the container (docker run --gpus all). The server needs the NVIDIA driver and nvidia-container-toolkit. Toggling this redeploys the application.',
       portExpose: 'Published ports',
       portExposeAdminOnly: 'Only an admin can change port mappings.',
       addExposePort: 'Add expose port',
@@ -719,6 +722,9 @@ const resources = {
       branch: 'Rama',
       baseDirectory: 'Directorio base',
       dockerfilePath: 'Ruta del Dockerfile',
+      useGpu: 'Usar GPU',
+      useGpuHint:
+        'Pasa la GPU NVIDIA del host al contenedor (docker run --gpus all). El servidor necesita el driver NVIDIA y el nvidia-container-toolkit. Cambiar esta opción redespliega la aplicación.',
       portExpose: 'Puertos publicados',
       portExposeAdminOnly: 'Solo un administrador puede cambiar los mapeos de puertos.',
       addExposePort: 'Agregar expose port',

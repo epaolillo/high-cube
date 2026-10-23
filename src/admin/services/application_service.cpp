@@ -482,6 +482,7 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
   app.healthCheckPath = body.value("healthCheckPath", app.healthCheckPath.empty() ? "/" : app.healthCheckPath);
   app.healthCheckCommand = body.value("healthCheckCommand", app.healthCheckCommand);
   app.maxRestartCount = body.value("maxRestartCount", app.maxRestartCount);
+  app.useGpu = body.value("useGpu", app.useGpu);
 
   const bool sourceInBody = body.contains("source") || body.contains("githubAppId") ||
                             body.contains("repoFullName") || body.contains("repoUrl");
@@ -761,6 +762,7 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   const auto oldBaseDir = existing.baseDirectory;
   const auto oldBranch = existing.branch;
   const auto oldBasicAuth = existing.basicAuthUsers;
+  const auto oldUseGpu = existing.useGpu;
   auto app = parseBody(body, &existing, actor);
   app.id = id;
   app.createdBy = existing.createdBy;
@@ -801,7 +803,8 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   const bool needsRedeploy =
       app.envJson != oldEnv || app.portsExposes != oldPorts || app.portMappings != oldMappings ||
       app.dockerfilePath != oldDockerfile || app.baseDirectory != oldBaseDir ||
-      app.branch != oldBranch || body.contains("portMappings") || body.contains("env");
+      app.branch != oldBranch || app.useGpu != oldUseGpu || body.contains("portMappings") ||
+      body.contains("env");
   if (needsRedeploy) {
     app.pendingRedeploy = true;
   }

@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -79,6 +80,7 @@ type Application = {
   portsExposes?: number;
   portMappings?: PortMapping[];
   pendingRedeploy?: boolean;
+  useGpu?: boolean;
   desiredReplicas?: number;
   scaleMode?: string;
   minReplicas?: number;
@@ -576,6 +578,10 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   const basicAuthDirty = useRef(false);
   const [portMappings, setPortMappings] = useState<PortMapping[]>([]);
   const serverMappings = useRef<string>('[]');
+  // NVIDIA GPU passthrough (docker run --gpus all). Dirty ref keeps local edits
+  // while the server overview polls in the background.
+  const [useGpu, setUseGpu] = useState(false);
+  const useGpuDirty = useRef(false);
   // Ports we just confirmed free, so the debounced check does not ask the agent again.
   const verifiedHostPorts = useRef<Set<number>>(new Set());
   // Live host-port availability: port number -> check state.
@@ -655,6 +661,9 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       serverMappings.current = nextKey;
       return nextMappings;
     });
+    if (!useGpuDirty.current) {
+      setUseGpu(Boolean(appData.useGpu));
+    }
     setDeployments(data.deployments?.rows || []);
     setReplicas(data.replicas?.rows || []);
     setVolumes(data.volumes?.rows || []);
@@ -1061,6 +1070,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         }));
       }
       if (isAdmin) {
+        patch.useGpu = useGpu;
         if (JSON.stringify(portMappings) !== serverMappings.current) {
           patch.portMappings = portMappings;
         }
@@ -1104,6 +1114,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       basicAuthDirty.current = false;
       targetsDirty.current = false;
       scaleDirty.current = false;
+      useGpuDirty.current = false;
       setApp(data);
       saved = true;
       await load();
@@ -1522,6 +1533,36 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
             ) : null}
           </Modal>
         </div>
+
+      {isAdmin && (
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                {t('useGpu')}
+              </Typography.Title>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                {t('useGpuHint')}
+              </Typography.Text>
+            </div>
+            <Switch
+              checked={useGpu}
+              onChange={(checked) => {
+                useGpuDirty.current = true;
+                setUseGpu(checked);
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <div style={{ ...cardStyle, marginBottom: 16 }}>
         <div

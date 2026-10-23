@@ -128,6 +128,7 @@ nlohmann::json applicationToJson(const Application& app) {
       {"healthCheckPath", app.healthCheckPath},
       {"healthCheckCommand", app.healthCheckCommand},
       {"maxRestartCount", app.maxRestartCount},
+      {"useGpu", app.useGpu},
       {"hasDeployKey", !app.deployKeyPublic.empty()},
       {"deployKeyPublic", app.deployKeyPublic},
       {"internalEndpoint",

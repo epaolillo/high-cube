@@ -582,6 +582,13 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
         "highcube",
         "--network-alias",
         order.network_alias()};
+    // Pass the host NVIDIA GPU into the container when the application opts in.
+    // Requires the nvidia-container-toolkit on this server; without it docker
+    // run fails and the deploy is reported as failed (surfaced in the logs).
+    if (order.use_gpu()) {
+      runArgs.push_back("--gpus");
+      runArgs.push_back("all");
+    }
     for (const auto& [key, value] : order.env()) {
       runArgs.push_back("-e");
       runArgs.push_back(key + "=" + value);

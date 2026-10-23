@@ -65,7 +65,7 @@ constexpr const char* kApplicationSelect =
     "COALESCE(a.scale_target_load,1.0),COALESCE(a.scale_cooldown_seconds,120),"
     "COALESCE(a.scale_window_seconds,180),COALESCE(a.scale_last_action_at,''),"
     "COALESCE(u.email,''),COALESCE(a.icon,''),COALESCE(a.basic_auth_users,''),"
-    "COALESCE(a.database_flavor,'') "
+    "COALESCE(a.database_flavor,''),COALESCE(a.use_gpu,0) "
     "FROM applications a LEFT JOIN users u ON u.id=a.created_by";
 
 int clampPageSize(int pageSize) {
@@ -165,6 +165,9 @@ Application Repositories::hydrateApplication(SQLite::Statement& st) {
   }
   if (st.getColumnCount() > 35) {
     app.databaseFlavor = st.getColumn(35).isNull() ? "" : st.getColumn(35).getString();
+  }
+  if (st.getColumnCount() > 36) {
+    app.useGpu = st.getColumn(36).getInt() != 0;
   }
   return app;
 }
@@ -1000,8 +1003,8 @@ int64_t Repositories::createApplication(const Application& app) {
       "repo_full_name,port_mappings_json,pending_redeploy,scale_mode,min_replicas,max_replicas,"
       "scale_target_cpu_percent,scale_target_memory_percent,scale_target_load,"
       "scale_cooldown_seconds,scale_window_seconds,scale_last_action_at,icon,basic_auth_users,"
-      "database_flavor) "
-      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+      "database_flavor,use_gpu) "
+      "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   st.bind(1, app.name);
   st.bind(2, app.type);
   st.bind(3, app.repoUrl);
@@ -1042,6 +1045,7 @@ int64_t Repositories::createApplication(const Application& app) {
   st.bind(30, app.icon);
   st.bind(31, app.basicAuthUsers);
   st.bind(32, app.databaseFlavor);
+  st.bind(33, app.useGpu ? 1 : 0);
   st.exec();
   const int64_t id = database_.db().getLastInsertRowid();
   setDependencies(id, app.dependencies);
@@ -1065,7 +1069,7 @@ void Repositories::updateApplication(const Application& app) {
       "pending_redeploy=?, scale_mode=?, min_replicas=?, max_replicas=?, "
       "scale_target_cpu_percent=?, scale_target_memory_percent=?, scale_target_load=?, "
       "scale_cooldown_seconds=?, scale_window_seconds=?, scale_last_action_at=?, icon=?, "
-      "basic_auth_users=?, database_flavor=?, created_by=? WHERE id=?");
+      "basic_auth_users=?, database_flavor=?, created_by=?, use_gpu=? WHERE id=?");
   st.bind(1, app.name);
   st.bind(2, app.type);
   st.bind(3, app.repoUrl);
@@ -1110,7 +1114,8 @@ void Repositories::updateApplication(const Application& app) {
   } else {
     st.bind(32);
   }
-  st.bind(33, app.id);
+  st.bind(33, app.useGpu ? 1 : 0);
+  st.bind(34, app.id);
   st.exec();
   setDependencies(app.id, app.dependencies);
   setTargetServers(app.id, app.targetServers);

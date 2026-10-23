@@ -137,6 +137,9 @@ struct Application {
   std::string healthCheckPath = "/";
   std::string healthCheckCommand;
   int maxRestartCount = 0;
+  // Pass the host NVIDIA GPU into the container (docker run --gpus all). Requires
+  // the nvidia-container-toolkit on the target server. Off by default.
+  bool useGpu = false;
   std::string deployKeyPublic;
   std::string deployKeyPrivate;
   int64_t createdBy = 0;

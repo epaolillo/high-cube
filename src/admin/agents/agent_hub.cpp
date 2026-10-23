@@ -990,6 +990,7 @@ void AgentHub::deployReplica(int64_t replicaId) {
   order.set_health_check_command(app->healthCheckCommand);
   order.set_max_restart_count(app->maxRestartCount);
   order.set_no_cache(deployment->noCache);
+  order.set_use_gpu(app->useGpu);
   for (const auto& mapping : app->portMappings) {
     auto* port = order.add_port_mappings();
     port->set_container_port(mapping.containerPort);

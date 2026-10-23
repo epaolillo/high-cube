@@ -76,6 +76,7 @@ message DeployReplica {
   string git_access_token = 19; // GitHub App installation token for private HTTPS clones
   bool no_cache = 20;           // docker build --no-cache
   repeated PortMapping port_mappings = 21;
+  bool use_gpu = 22;            // pass the host NVIDIA GPU into the container (docker run --gpus all)
 }
 
 message StopReplica {
