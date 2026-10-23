@@ -112,6 +112,21 @@ type Application = {
   ownerEmail?: string;
 };
 
+type GithubAppOption = {
+  id: number;
+  name: string;
+  status: string;
+};
+
+type GithubRepositoryOption = {
+  fullName: string;
+  defaultBranch: string;
+};
+
+type GithubBranchOption = {
+  name: string;
+};
+
 type Deployment = {
   id: number;
   gitSha: string;
@@ -560,6 +575,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceSaving, setSourceSaving] = useState(false);
+  const [githubApps, setGithubApps] = useState<{ value: number; label: string }[]>([]);
+  const [githubRepos, setGithubRepos] = useState<
+    { value: string; label: string; defaultBranch: string }[]
+  >([]);
+  const [githubBranches, setGithubBranches] = useState<{ value: string; label: string }[]>([]);
   const [volumes, setVolumes] = useState<VolumeRow[]>([]);
   const [series, setSeries] = useState<MetricPoint[]>([]);
   const [latest, setLatest] = useState<LatestMetrics | null>(null);
@@ -596,6 +618,10 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   const [shellReplicaId, setShellReplicaId] = useState<number>();
   const [form] = Form.useForm();
   const [volumeForm] = Form.useForm();
+  const [sourceForm] = Form.useForm();
+  const sourceType = Form.useWatch('source', sourceForm);
+  const sourceGithubAppId = Form.useWatch('githubAppId', sourceForm);
+  const sourceRepoFullName = Form.useWatch('repoFullName', sourceForm);
   const [volumeModal, setVolumeModal] = useState<null | { mode: 'create' | 'edit'; volume?: VolumeRow }>(
     null,
   );
@@ -746,6 +772,63 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
   }, [isAdmin]);
 
   useEffect(() => {
+    if (!sourceOpen) return;
+    api
+      .get('/github-apps', { params: { page: 1, pageSize: 100 } })
+      .then(({ data }) => {
+        setGithubApps(
+          (data.rows || [])
+            .filter((row: GithubAppOption) => row.status === 'installed')
+            .map((row: GithubAppOption) => ({ value: row.id, label: row.name })),
+        );
+      })
+      .catch(() => undefined);
+  }, [sourceOpen]);
+
+  useEffect(() => {
+    if (!sourceOpen || sourceType !== 'github_app' || !sourceGithubAppId) {
+      setGithubRepos([]);
+      return;
+    }
+    api
+      .get(`/github-apps/${sourceGithubAppId}/repositories`, { params: { page: 1, pageSize: 100 } })
+      .then(({ data }) => {
+        const rows = (data.rows || []).map((row: GithubRepositoryOption) => ({
+          value: row.fullName,
+          label: row.fullName,
+          defaultBranch: row.defaultBranch || 'main',
+        }));
+        const current = sourceForm.getFieldValue('repoFullName');
+        if (current && !rows.some((row: { value: string }) => row.value === current)) {
+          rows.unshift({ value: current, label: current, defaultBranch: sourceForm.getFieldValue('branch') || 'main' });
+        }
+        setGithubRepos(rows);
+      })
+      .catch(() => setGithubRepos([]));
+  }, [sourceOpen, sourceType, sourceGithubAppId, sourceForm]);
+
+  useEffect(() => {
+    if (!sourceOpen || sourceType !== 'github_app' || !sourceGithubAppId || !sourceRepoFullName) {
+      setGithubBranches([]);
+      return;
+    }
+    api
+      .get(`/github-apps/${sourceGithubAppId}/branches`, { params: { repo: sourceRepoFullName } })
+      .then(({ data }) => {
+        const rows = (data.rows || []).map((row: GithubBranchOption) => ({
+          value: row.name,
+          label: row.name,
+        }));
+        const current = sourceForm.getFieldValue('branch');
+        if (current && !rows.some((row: { value: string }) => row.value === current)) {
+          rows.unshift({ value: current, label: current });
+        }
+        setGithubBranches(rows);
+      })
+      .catch(() => setGithubBranches([]));
+  }, [sourceOpen, sourceType, sourceGithubAppId, sourceRepoFullName, sourceForm]);
+
+  useEffect(() => {
     if (!app || targetsDirty.current) return;
     const priority = new Map((app.targetServers || []).map((target) => [target.serverId, target.priority]));
     const enabled = availableServers
@@ -851,6 +934,45 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       message.success(t('nameSaved'));
     } finally {
       setSavingName(false);
+    }
+  };
+
+  const openSourceEditor = () => {
+    if (!app) return;
+    sourceForm.setFieldsValue({
+      source: app.githubAppId ? 'github_app' : 'public',
+      githubAppId: app.githubAppId,
+      repoFullName: app.repoFullName,
+      repoUrl: app.repoUrl,
+      branch: app.branch || 'main',
+    });
+    setSourceOpen(true);
+  };
+
+  const saveSource = async () => {
+    if (!id || !app) return;
+    const values = await sourceForm.validateFields();
+    const patch: Record<string, unknown> = {
+      source: values.source,
+      branch: values.branch,
+    };
+    if (values.source === 'github_app') {
+      patch.githubAppId = values.githubAppId;
+      patch.repoFullName = values.repoFullName;
+    } else {
+      patch.repoUrl = values.repoUrl;
+    }
+    setSourceSaving(true);
+    try {
+      await api.patch(`/applications/${id}`, patch);
+      setSourceOpen(false);
+      await load();
+      message.success(t('saved'));
+      if (await confirmRedeploy(t)) {
+        await redeploy(false);
+      }
+    } finally {
+      setSourceSaving(false);
     }
   };
 
@@ -2161,6 +2283,9 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                 repoLabel(app)
               )}
               <Typography.Text type="secondary"> · {app.branch}</Typography.Text>
+              <Button type="link" size="small" onClick={openSourceEditor} style={{ paddingInline: 6 }}>
+                {t('changeSource')}
+              </Button>
             </div>
             <div>
               <Typography.Text type="secondary">{t('lastDeploy')}: </Typography.Text>
@@ -2337,6 +2462,55 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         onCancel={() => setIconOpen(false)}
         onSave={saveIcon}
       />
+      <Modal
+        title={t('changeSource')}
+        open={sourceOpen}
+        onCancel={() => setSourceOpen(false)}
+        onOk={() => void saveSource()}
+        confirmLoading={sourceSaving}
+        okText={t('save')}
+        cancelText={t('cancel')}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          {t('changeSourceHint')}
+        </Typography.Paragraph>
+        <Form form={sourceForm} layout="vertical">
+          <Form.Item name="source" label={t('source')} rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: 'public', label: t('sourcePublic') },
+                { value: 'github_app', label: t('sourceGithubApp') },
+              ]}
+            />
+          </Form.Item>
+          {sourceType === 'github_app' ? (
+            <>
+              <Form.Item name="githubAppId" label={t('githubIntegration')} rules={[{ required: true }]}>
+                <Select options={githubApps} placeholder={t('selectGithubApp')} />
+              </Form.Item>
+              <Form.Item name="repoFullName" label={t('repository')} rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  options={githubRepos}
+                  placeholder={t('selectRepository')}
+                  onChange={(value) => {
+                    const repo = githubRepos.find((row) => row.value === value);
+                    sourceForm.setFieldValue('branch', repo?.defaultBranch || 'main');
+                  }}
+                />
+              </Form.Item>
+            </>
+          ) : (
+            <Form.Item name="repoUrl" label={t('repositoryUrl')} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+          )}
+          <Form.Item name="branch" label={t('branch')} rules={[{ required: true }]}>
+            {sourceType === 'github_app' ? <Select showSearch options={githubBranches} /> : <Input />}
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

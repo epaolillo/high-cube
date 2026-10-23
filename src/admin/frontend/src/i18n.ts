@@ -211,6 +211,9 @@ const resources = {
       source: 'Source',
       sourcePublic: 'Public repository URL',
       sourceGithubApp: 'GitHub App integration',
+      changeSource: 'Change source',
+      changeSourceHint:
+        'Choose where deployments fetch the application code. Saving marks the application for redeployment.',
       repositoryUrl: 'Repository URL',
       githubIntegration: 'GitHub integration',
       selectGithubApp: 'Select an installed GitHub App',
@@ -727,6 +730,9 @@ const resources = {
       source: 'Origen',
       sourcePublic: 'URL de repositorio público',
       sourceGithubApp: 'Integración GitHub App',
+      changeSource: 'Cambiar origen',
+      changeSourceHint:
+        'Elegí desde dónde los despliegues obtienen el código. Al guardar, la aplicación queda marcada para redeploy.',
       repositoryUrl: 'URL del repositorio',
       githubIntegration: 'Integración de GitHub',
       selectGithubApp: 'Elegí una GitHub App instalada',

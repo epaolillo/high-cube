@@ -761,6 +761,9 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   const auto oldDockerfile = existing.dockerfilePath;
   const auto oldBaseDir = existing.baseDirectory;
   const auto oldBranch = existing.branch;
+  const auto oldRepoUrl = existing.repoUrl;
+  const auto oldRepoFullName = existing.repoFullName;
+  const auto oldGithubAppId = existing.githubAppId;
   const auto oldBasicAuth = existing.basicAuthUsers;
   const auto oldUseGpu = existing.useGpu;
   auto app = parseBody(body, &existing, actor);
@@ -803,7 +806,9 @@ nlohmann::json ApplicationService::update(int64_t id, const nlohmann::json& body
   const bool needsRedeploy =
       app.envJson != oldEnv || app.portsExposes != oldPorts || app.portMappings != oldMappings ||
       app.dockerfilePath != oldDockerfile || app.baseDirectory != oldBaseDir ||
-      app.branch != oldBranch || app.useGpu != oldUseGpu || body.contains("portMappings") ||
+      app.repoUrl != oldRepoUrl || app.repoFullName != oldRepoFullName ||
+      app.githubAppId != oldGithubAppId || app.branch != oldBranch || app.useGpu != oldUseGpu ||
+      body.contains("portMappings") ||
       body.contains("env");
   if (needsRedeploy) {
     app.pendingRedeploy = true;
