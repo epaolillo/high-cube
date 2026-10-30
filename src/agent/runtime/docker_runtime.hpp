@@ -54,7 +54,8 @@ private:
   std::string highcubeIp(const std::string& containerId) const;
   // inspectStatus once Docker stops reporting "starting": the first health result only comes
   // after --health-interval, and "unhealthy" after --health-retries more probes.
-  std::string waitWhileStarting(const std::string& containerId);
+  std::string waitWhileStarting(const std::string& containerId,
+                                const std::function<bool()>& cancelled = {});
   bool mountsVolume(const std::string& container) const;
   // Bind device of a Docker volume: nullopt when it does not exist, empty when Docker manages it.
   std::optional<std::string> volumeDevice(const std::string& volumeName) const;
@@ -66,9 +67,14 @@ private:
   void removeContainer(const std::string& container) const;
   std::string docker(const std::vector<std::string>& args) const;
   int dockerCode(const std::vector<std::string>& args) const;
+  bool isCancelled(int64_t replicaId) const;
   bool consumeCancelled(int64_t replicaId) const;
+  // Remember a live git/docker pid so a stop can kill it, including its process group.
+  void attachProcess(int64_t replicaId, int pid) const;
+  void detachProcess(int64_t replicaId, int pid) const;
+  void abortReplica(int64_t replicaId) const;
   int dockerStreaming(const std::vector<std::string>& args, const LogCallback& logCb,
-                      const std::string& phase) const;
+                      const std::string& phase, int64_t replicaId) const;
   void removePreviousApplicationImages(int64_t applicationId, int64_t deploymentId,
                                        const std::string& currentImage,
                                        const std::string& currentContainerId) const;
@@ -76,6 +82,7 @@ private:
   std::string dataDir_;
   mutable std::mutex cancelMutex_;
   mutable std::unordered_set<int64_t> cancelledReplicas_;
+  mutable std::unordered_map<int64_t, int> activePids_;
 };
 
 }  // namespace highcube::agent

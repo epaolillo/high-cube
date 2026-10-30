@@ -372,6 +372,50 @@ void DeploymentService::stopReplica(int64_t id) {
   retireReplica(id, true);
 }
 
+void DeploymentService::halt(int64_t id, bool removeRow) {
+  auto deployment = ctx_.repos->findDeploymentById(id);
+  if (!deployment) {
+    throw std::runtime_error("Deployment not found");
+  }
+  const int64_t applicationId = deployment->applicationId;
+  // Stop only interrupts a build or a container that this deploy is still starting.
+  // A finished deploy stays up; deleting it is what removes its containers.
+  if (!removeRow && deployment->status != "pending" && deployment->status != "deploying") {
+    return;
+  }
+  deployment->status = "cancelled";
+  ctx_.repos->updateDeployment(*deployment);
+  if (!removeRow) {
+    ctx_.repos->appendDeploymentPhaseLog(id, "build", "Deploy cancelled\n");
+    ctx_.repos->appendDeploymentPhaseLog(id, "deploy", "Deploy cancelled\n");
+  }
+
+  auto replicas = ctx_.repos->listReplicas(applicationId, ListQuery{1, 1000, "", "asc", ""});
+  std::vector<int64_t> owned;
+  for (const auto& replica : replicas.rows) {
+    if (replica.deploymentId == id) {
+      owned.push_back(replica.id);
+    }
+  }
+  for (const auto replicaId : owned) {
+    retireReplica(replicaId, false);
+  }
+  if (removeRow) {
+    ctx_.repos->deleteDeployment(id);
+  }
+  auto app = ctx_.repos->findApplicationById(applicationId);
+  if (app) {
+    ctx_.proxy->renderApplicationSite(*app);
+  }
+  if (ctx_.placement) {
+    ctx_.placement->converge(applicationId);
+  }
+}
+
+void DeploymentService::stop(int64_t id) { halt(id, false); }
+
+void DeploymentService::remove(int64_t id) { halt(id, true); }
+
 void DeploymentService::restartReplica(int64_t id) {
   auto replica = ctx_.repos->findReplicaById(id);
   if (!replica) {
@@ -403,6 +447,13 @@ void DeploymentService::onContainerStatus(const ::highcube::ContainerStatus& sta
     if (!status.git_message().empty()) {
       deployment->gitMessage = status.git_message();
     }
+  }
+
+  // Stop already retired this generation. Ignore the status the agent sends
+  // while the build process is dying, so the deploy is not marked failed and
+  // is not started again.
+  if (deployment && deployment->status == "cancelled") {
+    return;
   }
 
   // Failed or stopped containers are removed immediately. Prior healthy generation stays.
@@ -487,6 +538,11 @@ void DeploymentService::onContainerStatus(const ::highcube::ContainerStatus& sta
       deployment->status = "deploying";
     }
     ctx_.repos->updateDeployment(*deployment);
+  }
+
+  deployment = ctx_.repos->findDeploymentById(deploymentId);
+  if (deployment && deployment->status == "cancelled") {
+    return;
   }
 
   auto app = ctx_.repos->findApplicationById(applicationId);

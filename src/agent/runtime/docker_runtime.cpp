@@ -5,9 +5,12 @@
 #include <boost/process.hpp>
 #include <spdlog/spdlog.h>
 
+#include <boost/process/extend.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +20,8 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+
+#include <unistd.h>
 
 namespace bp = boost::process;
 
@@ -56,6 +61,22 @@ void appendPortPublish(std::vector<std::string>& args, const ::highcube::PortMap
   }
   args.push_back("-p");
   args.push_back(spec + "/tcp");
+}
+
+// Children stay in this group so one signal kills docker build and the helpers it spawns.
+struct ProcessGroup : bp::extend::handler {
+  template <typename Executor>
+  void on_exec_setup(Executor&) const {
+    ::setpgid(0, 0);
+  }
+};
+
+void killProcessGroup(int pid) {
+  if (pid <= 0) {
+    return;
+  }
+  ::kill(-pid, SIGKILL);
+  ::kill(pid, SIGKILL);
 }
 
 struct VolumeCacheEntry {
@@ -466,24 +487,96 @@ int DockerRuntime::dockerCode(const std::vector<std::string>& args) const {
                     bp::std_err > bp::null);
 }
 
+bool DockerRuntime::isCancelled(int64_t replicaId) const {
+  std::lock_guard lock(cancelMutex_);
+  return cancelledReplicas_.count(replicaId) > 0;
+}
+
 bool DockerRuntime::consumeCancelled(int64_t replicaId) const {
   std::lock_guard lock(cancelMutex_);
   return cancelledReplicas_.erase(replicaId) > 0;
 }
 
-int DockerRuntime::dockerStreaming(const std::vector<std::string>& args, const LogCallback& logCb,
-                                   const std::string& phase) const {
-  bp::ipstream out;
-  // Merge stderr into stdout so docker build progress is captured without pipe deadlocks.
-  bp::child c(bp::search_path("docker"), bp::args(args), (bp::std_out & bp::std_err) > out);
-  std::string line;
-  while (std::getline(out, line)) {
-    if (logCb) {
-      logCb(phase, line + "\n");
+void DockerRuntime::attachProcess(int64_t replicaId, int pid) const {
+  bool killNow = false;
+  {
+    std::lock_guard lock(cancelMutex_);
+    activePids_[replicaId] = pid;
+    killNow = cancelledReplicas_.count(replicaId) > 0;
+  }
+  if (killNow) {
+    killProcessGroup(pid);
+  }
+}
+
+void DockerRuntime::detachProcess(int64_t replicaId, int pid) const {
+  std::lock_guard lock(cancelMutex_);
+  const auto it = activePids_.find(replicaId);
+  if (it == activePids_.end()) {
+    return;
+  }
+  if (pid == 0 || it->second == pid) {
+    activePids_.erase(it);
+  }
+}
+
+void DockerRuntime::abortReplica(int64_t replicaId) const {
+  int pid = 0;
+  {
+    std::lock_guard lock(cancelMutex_);
+    cancelledReplicas_.insert(replicaId);
+    const auto it = activePids_.find(replicaId);
+    if (it != activePids_.end()) {
+      pid = it->second;
     }
   }
-  c.wait();
-  return c.exit_code();
+  killProcessGroup(pid);
+}
+
+int DockerRuntime::dockerStreaming(const std::vector<std::string>& args, const LogCallback& logCb,
+                                   const std::string& phase, int64_t replicaId) const {
+  if (replicaId > 0 && isCancelled(replicaId)) {
+    return 130;
+  }
+  bp::ipstream out;
+  // Merge stderr into stdout so docker build progress is captured without pipe deadlocks.
+  // A new process group lets stop kill the client and every helper it spawned.
+  bp::child child(bp::search_path("docker"), bp::args(args), ProcessGroup(),
+                  (bp::std_out & bp::std_err) > out);
+  const int pid = static_cast<int>(child.id());
+  if (replicaId > 0) {
+    attachProcess(replicaId, pid);
+  }
+  int code = 1;
+  try {
+    std::string line;
+    while (std::getline(out, line)) {
+      if (logCb) {
+        logCb(phase, line + "\n");
+      }
+      if (replicaId > 0 && isCancelled(replicaId)) {
+        killProcessGroup(pid);
+        break;
+      }
+    }
+    if (child.running()) {
+      child.wait();
+    }
+    code = child.exit_code();
+  } catch (...) {
+    killProcessGroup(pid);
+    if (child.running()) {
+      child.wait();
+    }
+    if (replicaId > 0) {
+      detachProcess(replicaId, pid);
+    }
+    throw;
+  }
+  if (replicaId > 0) {
+    detachProcess(replicaId, pid);
+  }
+  return code;
 }
 
 void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusCallback cb,
@@ -500,6 +593,22 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
     logCb("deploy", "Cloning repository...\n");
   }
 
+  const auto cancelled = [&]() {
+    if (!consumeCancelled(order.replica_id())) {
+      return false;
+    }
+    removeReplicaContainer(order.application_id(), order.replica_id(), status.container_id());
+    status.set_status("stopped");
+    status.set_desired_state("stopped");
+    status.set_message("deploy cancelled");
+    if (logCb) {
+      logCb("build", "Deploy cancelled\n");
+      logCb("deploy", "Deploy cancelled\n");
+    }
+    cb(status);
+    return true;
+  };
+
   try {
     ensureNetwork();
     std::string image;
@@ -513,7 +622,10 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       if (logCb) {
         logCb("deploy", "Pulling image " + image + "\n");
       }
-      const int pullCode = dockerStreaming({"pull", image}, logCb, "deploy");
+      const int pullCode = dockerStreaming({"pull", image}, logCb, "deploy", order.replica_id());
+      if (cancelled()) {
+        return;
+      }
       if (pullCode != 0) {
         status.set_status("failed");
         status.set_message("docker pull failed");
@@ -524,10 +636,20 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
         return;
       }
     } else {
-      auto checkout =
-          checkoutRepository(dataDir_, order.application_id(), order.deployment_id(), order.repo_url(),
-                             order.branch(), order.commit_sha(), order.deploy_key_private(),
-                             order.git_access_token());
+      auto checkout = checkoutRepository(
+          dataDir_, order.application_id(), order.deployment_id(), order.repo_url(), order.branch(),
+          order.commit_sha(), order.deploy_key_private(), order.git_access_token(),
+          [this, replicaId = order.replica_id()](int pid) {
+            if (pid > 0) {
+              attachProcess(replicaId, pid);
+            } else {
+              detachProcess(replicaId, 0);
+            }
+          },
+          [this, replicaId = order.replica_id()]() { return isCancelled(replicaId); });
+      if (cancelled()) {
+        return;
+      }
       status.set_git_sha(checkout.commitSha);
       status.set_git_message(checkout.commitMessage);
       status.set_message("building image");
@@ -557,7 +679,10 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
         buildArgs.push_back("--no-cache");
       }
       buildArgs.push_back(context.string());
-      const int buildCode = dockerStreaming(buildArgs, logCb, "build");
+      const int buildCode = dockerStreaming(buildArgs, logCb, "build", order.replica_id());
+      if (cancelled()) {
+        return;
+      }
       if (buildCode != 0) {
         status.set_status("failed");
         status.set_message("docker build failed");
@@ -709,15 +834,7 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
     }
 
     runArgs.push_back(image);
-    if (consumeCancelled(order.replica_id())) {
-      removeReplicaContainer(order.application_id(), order.replica_id(), "");
-      status.set_status("stopped");
-      status.set_desired_state("stopped");
-      status.set_message("deploy cancelled");
-      if (logCb) {
-        logCb("deploy", "Deploy cancelled before the container started\n");
-      }
-      cb(status);
+    if (cancelled()) {
       return;
     }
     status.set_status("starting");
@@ -727,7 +844,10 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       logCb("deploy", "Starting container " + name + "\n");
     }
 
-    int runCode = dockerStreaming(runArgs, logCb, "deploy");
+    int runCode = dockerStreaming(runArgs, logCb, "deploy", order.replica_id());
+    if (cancelled()) {
+      return;
+    }
     if (runCode != 0) {
       removeContainer(name);
       status.set_status("failed");
@@ -777,7 +897,8 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       status.set_host_port(hostPort);
     }
 
-    const std::string health = waitWhileStarting(containerId);
+    const std::string health = waitWhileStarting(
+        containerId, [this, replicaId = order.replica_id()]() { return isCancelled(replicaId); });
     if (health == "healthy" || health == "running") {
       status.set_status(health == "healthy" ? "healthy" : "running");
       status.set_message("replica ready");
@@ -797,20 +918,15 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
         logCb("deploy", "Container started (" + status.status() + ")\n");
       }
     }
-    if (consumeCancelled(order.replica_id())) {
-      removeReplicaContainer(order.application_id(), order.replica_id(), containerId);
-      status.set_status("stopped");
-      status.set_desired_state("stopped");
-      status.set_message("deploy cancelled");
-      if (logCb) {
-        logCb("deploy", "Deploy cancelled after the container started\n");
-      }
-      cb(status);
+    if (cancelled()) {
       return;
     }
     removePreviousApplicationImages(order.application_id(), order.deployment_id(), image, containerId);
     cb(status);
   } catch (const std::exception& ex) {
+    if (cancelled()) {
+      return;
+    }
     status.set_status("failed");
     status.set_message(ex.what());
     if (logCb) {
@@ -912,11 +1028,10 @@ void DockerRuntime::removeUnkeptReplicas(const std::vector<int64_t>& keepReplica
 }
 
 void DockerRuntime::handleStop(const ::highcube::StopReplica& order, StatusCallback cb) {
-  // A stop that arrives while docker build is still running must cancel that deploy.
-  // Otherwise the build finishes later and publishes a container the control plane already forgot.
+  // Kill git clone, docker build, docker pull and docker run immediately. The flag
+  // also stops the deploy thread from starting the container after the process dies.
   if (order.replica_id() > 0) {
-    std::lock_guard lock(cancelMutex_);
-    cancelledReplicas_.insert(order.replica_id());
+    abortReplica(order.replica_id());
   }
   removeReplicaContainer(order.application_id(), order.replica_id(), order.container_id());
   ::highcube::ContainerStatus status;
@@ -1032,11 +1147,18 @@ std::string DockerRuntime::highcubeIp(const std::string& containerId) const {
   return ip;
 }
 
-std::string DockerRuntime::waitWhileStarting(const std::string& containerId) {
+std::string DockerRuntime::waitWhileStarting(const std::string& containerId,
+                                                 const std::function<bool()>& cancelled) {
   // 30s interval + 3 retries of up to 5s each; 150s also covers a slow first start.
   std::string health = inspectStatus(containerId);
   for (int i = 0; i < 75 && health == "starting"; ++i) {
+    if (cancelled && cancelled()) {
+      return "stopped";
+    }
     std::this_thread::sleep_for(std::chrono::seconds(2));
+    if (cancelled && cancelled()) {
+      return "stopped";
+    }
     health = inspectStatus(containerId);
   }
   return health;

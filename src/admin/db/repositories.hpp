@@ -123,6 +123,7 @@ public:
   std::optional<Deployment> findDeploymentById(int64_t id);
   int64_t createDeployment(const Deployment& deployment);
   void updateDeployment(const Deployment& deployment);
+  void deleteDeployment(int64_t id);
   void appendDeploymentLog(int64_t id, const std::string& chunk);
   void appendDeploymentPhaseLog(int64_t id, const std::string& phase, const std::string& chunk);
 

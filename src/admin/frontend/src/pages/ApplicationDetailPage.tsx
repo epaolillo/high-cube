@@ -1,5 +1,5 @@
 import { Column, DualAxes, Line } from '@ant-design/charts';
-import { DeleteOutlined } from '@ant-design/icons';
+import { DeleteOutlined, StopOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -496,6 +496,32 @@ function DeploymentsTab({
     };
   }, [logModal, logStatus]);
 
+  const inFlight = (status: string) => status === 'pending' || status === 'deploying';
+
+  const stopDeployment = async (deployment: Deployment) => {
+    const ok = await confirmDestructive(t, {
+      title: t('stopDeployTitle'),
+      text: t('stopDeployBody'),
+      confirmText: t('stopDeploy'),
+    });
+    if (!ok) return;
+    await api.post(`/deployments/${deployment.id}/stop`);
+    message.success(t('deployStopped'));
+    onRefresh();
+  };
+
+  const deleteDeployment = async (deployment: Deployment) => {
+    const ok = await confirmDestructive(t, {
+      title: t('deleteDeployTitle'),
+      text: t('deleteDeployBody'),
+      confirmText: t('deleteDeploy'),
+    });
+    if (!ok) return;
+    await api.delete(`/deployments/${deployment.id}`);
+    message.success(t('deployDeleted'));
+    onRefresh();
+  };
+
   const openLogs = (deployment: Deployment, phase: 'build' | 'deploy') => {
     setLogText('');
     setLogOffset(0);
@@ -522,7 +548,13 @@ function DeploymentsTab({
           items={deployments.slice(0, 10).map((deployment) => {
             const failed = isFailureStatus(deployment.status);
             return {
-              color: failed ? 'red' : deployment.status === 'success' ? 'green' : 'blue',
+              color: failed
+                ? 'red'
+                : deployment.status === 'success'
+                  ? 'green'
+                  : deployment.status === 'cancelled'
+                    ? 'gray'
+                    : 'blue',
               children: (
                 <div
                   style={{
@@ -543,8 +575,18 @@ function DeploymentsTab({
                     }}
                   >
                     <Space wrap>
-                      <Tag color={failed ? 'error' : deployment.status === 'success' ? 'success' : 'processing'}>
-                        {deployment.status}
+                      <Tag
+                        color={
+                          failed
+                            ? 'error'
+                            : deployment.status === 'success'
+                              ? 'success'
+                              : deployment.status === 'cancelled'
+                                ? 'default'
+                                : 'processing'
+                        }
+                      >
+                        {deployment.status === 'cancelled' ? t('deployCancelled') : deployment.status}
                       </Tag>
                       {deployment.noCache && <Tag color="orange">{t('noCacheBadge')}</Tag>}
                       <Typography.Text type="secondary">
@@ -559,6 +601,24 @@ function DeploymentsTab({
                       </Button>
                       <Button size="small" onClick={() => openLogs(deployment, 'deploy')}>
                         {t('deployLogs')}
+                      </Button>
+                      {inFlight(deployment.status) && (
+                        <Button
+                          size="small"
+                          danger
+                          icon={<StopOutlined />}
+                          onClick={() => void stopDeployment(deployment)}
+                        >
+                          {t('stopDeploy')}
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={() => void deleteDeployment(deployment)}
+                      >
+                        {t('deleteDeploy')}
                       </Button>
                     </Space>
                   </div>

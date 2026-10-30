@@ -141,12 +141,18 @@ namespace {
 std::optional<int64_t> pickDeploymentId(Repositories& repos, int64_t applicationId) {
   auto deployments = repos.listDeployments(applicationId, ListQuery{1, 50, "", "desc", ""});
   for (const auto& deployment : deployments.rows) {
+    if (deployment.status == "cancelled") {
+      continue;
+    }
     if (deployment.status == "success" || deployment.status == "deploying") {
       return deployment.id;
     }
   }
-  if (!deployments.rows.empty()) {
-    return deployments.rows.front().id;
+  for (const auto& deployment : deployments.rows) {
+    if (deployment.status == "cancelled") {
+      continue;
+    }
+    return deployment.id;
   }
   return std::nullopt;
 }

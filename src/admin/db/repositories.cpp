@@ -1483,18 +1483,33 @@ int64_t Repositories::createDeployment(const Deployment& deployment) {
 }
 
 void Repositories::updateDeployment(const Deployment& deployment) {
+  Deployment row = deployment;
+  // A stop must stick. A status report that was already in flight cannot
+  // put a cancelled deploy back to "deploying" or "failed".
+  SQLite::Statement current(database_.db(), "SELECT status FROM deployments WHERE id=?");
+  current.bind(1, deployment.id);
+  if (current.executeStep() && current.getColumn(0).getString() == "cancelled" &&
+      row.status != "cancelled") {
+    row.status = "cancelled";
+  }
   SQLite::Statement st(database_.db(),
                        "UPDATE deployments SET git_sha=?, git_message=?, status=?, log_text=?, "
                        "build_log=?, deploy_log=?, no_cache=?, deploy_attempts=? WHERE id=?");
-  st.bind(1, deployment.gitSha);
-  st.bind(2, deployment.gitMessage);
-  st.bind(3, deployment.status);
-  st.bind(4, deployment.logText);
-  st.bind(5, deployment.buildLog);
-  st.bind(6, deployment.deployLog);
-  st.bind(7, deployment.noCache ? 1 : 0);
-  st.bind(8, deployment.deployAttempts);
-  st.bind(9, deployment.id);
+  st.bind(1, row.gitSha);
+  st.bind(2, row.gitMessage);
+  st.bind(3, row.status);
+  st.bind(4, row.logText);
+  st.bind(5, row.buildLog);
+  st.bind(6, row.deployLog);
+  st.bind(7, row.noCache ? 1 : 0);
+  st.bind(8, row.deployAttempts);
+  st.bind(9, row.id);
+  st.exec();
+}
+
+void Repositories::deleteDeployment(int64_t id) {
+  SQLite::Statement st(database_.db(), "DELETE FROM deployments WHERE id=?");
+  st.bind(1, id);
   st.exec();
 }
 

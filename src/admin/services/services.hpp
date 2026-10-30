@@ -225,6 +225,10 @@ public:
   nlohmann::json getReplica(int64_t id);
   void stopReplica(int64_t id);
   void restartReplica(int64_t id);
+  // Kill an in-progress build or container start and leave the deploy in the timeline.
+  void stop(int64_t id);
+  // Kill anything that deploy started, then remove it from the timeline.
+  void remove(int64_t id);
   // Remove container on the agent and delete the replica row. Optionally reconverge scale.
   void retireReplica(int64_t id, bool reconverge = true);
   void purgeInactiveReplicas(int64_t applicationId);
@@ -235,6 +239,7 @@ public:
 
 private:
   AppContext& ctx_;
+  void halt(int64_t id, bool removeRow);
   void stopPreviousGeneration(int64_t applicationId, int64_t currentDeploymentId);
   void startReplacementReplica(const Application& app, int64_t deploymentId,
                                int64_t replacesReplicaId);

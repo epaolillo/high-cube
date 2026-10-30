@@ -1,11 +1,16 @@
 #include "runtime/git_checkout.hpp"
 
 #include <boost/process.hpp>
+#include <boost/process/extend.hpp>
 #include <spdlog/spdlog.h>
 
+#include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <vector>
+
+#include <unistd.h>
 
 namespace bp = boost::process;
 
@@ -30,13 +35,55 @@ std::string base64Encode(const std::string& input) {
   return out;
 }
 
+struct ProcessGroup : bp::extend::handler {
+  template <typename Executor>
+  void on_exec_setup(Executor&) const {
+    ::setpgid(0, 0);
+  }
+};
+
+void killProcessGroup(int pid) {
+  if (pid <= 0) {
+    return;
+  }
+  ::kill(-pid, SIGKILL);
+  ::kill(pid, SIGKILL);
+}
+
+template <typename Out>
+int runGit(const std::vector<std::string>& args, const bp::environment& env, Out&& output,
+           const std::function<void(int)>& onSpawn, const std::function<bool()>& isCancelled) {
+  if (isCancelled && isCancelled()) {
+    throw std::runtime_error("deploy cancelled");
+  }
+  bp::child child(bp::search_path("git"), bp::args(args), env, ProcessGroup(), bp::std_out > output,
+                  bp::std_err > bp::null);
+  const int pid = static_cast<int>(child.id());
+  if (onSpawn) {
+    onSpawn(pid);
+  }
+  if (isCancelled && isCancelled()) {
+    killProcessGroup(pid);
+  }
+  child.wait();
+  if (onSpawn) {
+    onSpawn(0);
+  }
+  if (isCancelled && isCancelled()) {
+    throw std::runtime_error("deploy cancelled");
+  }
+  return child.exit_code();
+}
+
 }  // namespace
 
 CheckoutResult checkoutRepository(const std::string& dataDir, int64_t applicationId,
                                   int64_t deploymentId, const std::string& repoUrl,
                                   const std::string& branch, const std::string& commitSha,
                                   const std::string& deployKeyPrivate,
-                                  const std::string& gitAccessToken) {
+                                  const std::string& gitAccessToken,
+                                  const std::function<void(int)>& onSpawn,
+                                  const std::function<bool()>& isCancelled) {
   const auto root = std::filesystem::path(dataDir) / "applications" /
                     std::to_string(applicationId) / std::to_string(deploymentId);
   std::filesystem::create_directories(root);
@@ -70,9 +117,9 @@ CheckoutResult checkoutRepository(const std::string& dataDir, int64_t applicatio
     }
     const std::string header =
         "Authorization: Basic " + base64Encode("x-access-token:" + gitAccessToken);
-    cloneCode = bp::system(bp::search_path("git"), "-c", "http.extraHeader=" + header, "clone",
-                           "--depth", "1", "--branch", branch, cloneUrl, root.string(), env,
-                           bp::std_out > bp::null, bp::std_err > bp::null);
+    cloneCode = runGit({"-c", "http.extraHeader=" + header, "clone", "--depth", "1", "--branch",
+                        branch, cloneUrl, root.string()},
+                       env, bp::null, onSpawn, isCancelled);
   } else {
     if (!deployKeyPrivate.empty() && cloneUrl.rfind("https://github.com/", 0) == 0) {
       auto rest = cloneUrl.substr(std::string("https://github.com/").size());
@@ -84,9 +131,8 @@ CheckoutResult checkoutRepository(const std::string& dataDir, int64_t applicatio
       }
       cloneUrl = "git@github.com:" + rest;
     }
-    cloneCode =
-        bp::system(bp::search_path("git"), "clone", "--depth", "1", "--branch", branch, cloneUrl,
-                   root.string(), env, bp::std_out > bp::null, bp::std_err > bp::null);
+    cloneCode = runGit({"clone", "--depth", "1", "--branch", branch, cloneUrl, root.string()}, env,
+                       bp::null, onSpawn, isCancelled);
   }
   if (cloneCode != 0) {
     throw std::runtime_error("git clone failed");
@@ -95,18 +141,16 @@ CheckoutResult checkoutRepository(const std::string& dataDir, int64_t applicatio
   CheckoutResult result;
   result.path = root.string();
   if (!commitSha.empty()) {
-    bp::system(bp::search_path("git"), "-C", root.string(), "checkout", commitSha);
+    runGit({"-C", root.string(), "checkout", commitSha}, env, bp::null, onSpawn, isCancelled);
     result.commitSha = commitSha;
   } else {
     bp::ipstream out;
-    bp::system(bp::search_path("git"), "-C", root.string(), "rev-parse", "HEAD",
-               bp::std_out > out);
+    runGit({"-C", root.string(), "rev-parse", "HEAD"}, env, out, onSpawn, isCancelled);
     std::getline(out, result.commitSha);
   }
   {
     bp::ipstream out;
-    bp::system(bp::search_path("git"), "-C", root.string(), "log", "-1", "--format=%s",
-               bp::std_out > out);
+    runGit({"-C", root.string(), "log", "-1", "--format=%s"}, env, out, onSpawn, isCancelled);
     std::getline(out, result.commitMessage);
   }
   return result;

@@ -519,6 +519,20 @@ void registerHandlers(Router& router, AppContext& ctx) {
     requireAppAccess(ctx, c, deployment->applicationId);
     return jsonResponse(http::status::ok, ctx.deployments->get(deployment->id));
   });
+  router.add("POST", "/api/deployments/:id/stop", true, [&](RequestContext& c) {
+    auto deployment = ctx.repos->findDeploymentById(std::stoll(c.params["id"]));
+    if (!deployment) throw std::runtime_error("Deployment not found");
+    requireAppAccess(ctx, c, deployment->applicationId);
+    ctx.deployments->stop(deployment->id);
+    return emptyResponse(http::status::no_content);
+  });
+  router.add("DELETE", "/api/deployments/:id", true, [&](RequestContext& c) {
+    auto deployment = ctx.repos->findDeploymentById(std::stoll(c.params["id"]));
+    if (!deployment) throw std::runtime_error("Deployment not found");
+    requireAppAccess(ctx, c, deployment->applicationId);
+    ctx.deployments->remove(deployment->id);
+    return emptyResponse(http::status::no_content);
+  });
   router.add("GET", "/api/deployments/:id/logs", true, [&](RequestContext& c) {
     auto deployment = ctx.repos->findDeploymentById(std::stoll(c.params["id"]));
     if (!deployment) throw std::runtime_error("Deployment not found");
