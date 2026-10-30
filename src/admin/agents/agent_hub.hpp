@@ -92,6 +92,11 @@ public:
     std::string passwordEnvKey;
     std::string newPassword;
     std::string healthCommand;
+    // Username whose plaintext password should be remembered after a successful change.
+    std::string storedPasswordUser;
+    std::string storedPassword;
+    // Previous username to drop or rename when the account is deleted or renamed.
+    std::string forgetPasswordUser;
   };
   struct DbManagePoll {
     std::string status;  // pending | ok | error | timeout | unknown

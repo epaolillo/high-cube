@@ -183,6 +183,8 @@ const resources = {
       subdomainPlaceholder: 'random-hash',
       apexHostnameHint: 'Empty subdomain: serves the bare domain {{hostname}}',
       addHostname: 'Add hostname',
+      noHostname:
+        'No public hostname. The application stays on the internal network, which is the usual setup for a database.',
       noAssignedDomains: 'No base domains are assigned to your account. Ask an administrator.',
       hostnameRequired: 'Each hostname needs a subdomain and a base domain.',
       registerGithubApp: 'Register GitHub App',
@@ -232,7 +234,10 @@ const resources = {
       hostPort: 'Host port',
       hostPortAutoHint: 'Use 0 to let the agent pick a free host port',
       hostPortExplicitHint:
-        'Leave 0 to keep the port internal (served through the highcube network). Set a value only to publish it on the host; it must be free on the target server.',
+        'Leave 0 to keep the port internal (served through the highcube network). Set a value only to publish it on the host; it must be free on the target server. A range such as 10000-30000 must use the same span on the container and the host.',
+      portProtocol: 'Protocol',
+      portRangeInvalid:
+        'Enter a port (80) or a range (10000-30000). The host range must be the same size as the container range, and a range needs a host port.',
       remotePortTitle: 'This app is not on the public server',
       remotePortBody:
         'It runs on {{appServers}}. Public traffic for {{domains}} enters through {{accessServers}}, and those machines do not share a Docker network. Publish a host port, save, and redeploy so nginx can reach {{reach}}.',
@@ -485,6 +490,10 @@ const resources = {
       dbUserSuperuser: 'Superuser',
       dbUserName: 'Username',
       dbUserPassword: 'Password',
+      dbPasswordUnknown: 'Not stored',
+      copy: 'Copy',
+      copied: 'Copied',
+      copyFailed: 'Could not copy',
       dbUserProtectedHint:
         'High Cube uses this account to manage the server. You can change its password.',
       dbConfirmCreateUserTitle: 'Create this user?',
@@ -702,6 +711,8 @@ const resources = {
       subdomainPlaceholder: 'hash-aleatorio',
       apexHostnameHint: 'Subdominio vacío: sirve el dominio {{hostname}} sin prefijo',
       addHostname: 'Agregar hostname',
+      noHostname:
+        'Sin hostname público. La aplicación queda solo en la red interna, que es lo habitual para una base de datos.',
       noAssignedDomains: 'No tenés dominios base asignados. Pedile a un administrador.',
       hostnameRequired: 'Cada hostname necesita un subdominio y un dominio base.',
       registerGithubApp: 'Registrar GitHub App',
@@ -751,7 +762,10 @@ const resources = {
       hostPort: 'Puerto del host',
       hostPortAutoHint: 'Usá 0 para que el agente elija un puerto libre en el host',
       hostPortExplicitHint:
-        'Dejá 0 para mantener el puerto interno (se sirve por la red highcube). Poné un valor solo para publicarlo en el host; debe estar libre en el servidor destino.',
+        'Dejá 0 para mantener el puerto interno (se sirve por la red highcube). Poné un valor solo para publicarlo en el host; debe estar libre en el servidor destino. Un rango como 10000-30000 tiene que tener el mismo tamaño en el contenedor y en el host.',
+      portProtocol: 'Protocolo',
+      portRangeInvalid:
+        'Ingresá un puerto (80) o un rango (10000-30000). El rango del host tiene que tener el mismo tamaño que el del contenedor, y un rango necesita un puerto de host.',
       remotePortTitle: 'Esta app no está en el servidor público',
       remotePortBody:
         'Corre en {{appServers}}. El tráfico público de {{domains}} entra por {{accessServers}}, y esas máquinas no comparten la red de Docker. Publicá un puerto en el host, guardá y hacé redeploy para que nginx llegue a {{reach}}.',
@@ -1006,6 +1020,10 @@ const resources = {
       dbUserSuperuser: 'Superusuario',
       dbUserName: 'Usuario',
       dbUserPassword: 'Contraseña',
+      dbPasswordUnknown: 'No guardada',
+      copy: 'Copiar',
+      copied: 'Copiada',
+      copyFailed: 'No se pudo copiar',
       dbUserProtectedHint:
         'High Cube usa esta cuenta para administrar el servidor. Podés cambiar su contraseña.',
       dbConfirmCreateUserTitle: '¿Crear este usuario?',

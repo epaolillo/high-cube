@@ -23,6 +23,41 @@ namespace bp = boost::process;
 namespace highcube::agent {
 namespace {
 
+// Docker publish spec without the protocol suffix: "8080:80" or "10000-30000:10000-30000".
+std::string portPublishSpec(const ::highcube::PortMapping& mapping) {
+  std::string spec = std::to_string(mapping.host_port());
+  if (mapping.host_port_end() > mapping.host_port()) {
+    spec += "-" + std::to_string(mapping.host_port_end());
+  }
+  spec += ":" + std::to_string(mapping.container_port());
+  if (mapping.container_port_end() > mapping.container_port()) {
+    spec += "-" + std::to_string(mapping.container_port_end());
+  }
+  return spec;
+}
+
+void appendPortPublish(std::vector<std::string>& args, const ::highcube::PortMapping& mapping) {
+  if (mapping.host_port() <= 0) {
+    return;
+  }
+  const auto spec = portPublishSpec(mapping);
+  const auto& protocol = mapping.protocol();
+  if (protocol == "udp") {
+    args.push_back("-p");
+    args.push_back(spec + "/udp");
+    return;
+  }
+  if (protocol == "both") {
+    args.push_back("-p");
+    args.push_back(spec + "/tcp");
+    args.push_back("-p");
+    args.push_back(spec + "/udp");
+    return;
+  }
+  args.push_back("-p");
+  args.push_back(spec + "/tcp");
+}
+
 struct VolumeCacheEntry {
   nlohmann::json payload;
   std::chrono::steady_clock::time_point expiresAt;
@@ -614,7 +649,9 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       // first, which causes a brief downtime.
       std::vector<int> requestedFixed;
       for (const auto& mapping : order.port_mappings()) {
-        if (mapping.host_port() > 0) {
+        // A range is published as one docker -p argument. Probing every port in a span
+        // such as 10000-30000 is not practical; docker reports the bind failure.
+        if (mapping.host_port() > 0 && mapping.host_port_end() <= mapping.host_port()) {
           requestedFixed.push_back(mapping.host_port());
         }
       }
@@ -632,12 +669,14 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
           continue;  // not published to the host
         }
         fixedHostPorts = true;
-        if (hostPort == 0) {
+        // Nginx reaches the app through one TCP port. Ranges and UDP-only mappings
+        // are published, but they are not the HTTP upstream.
+        const bool singleTcp = mapping.host_port_end() <= mapping.host_port() &&
+                               mapping.protocol() != "udp";
+        if (hostPort == 0 && singleTcp) {
           hostPort = mapping.host_port();
         }
-        runArgs.push_back("-p");
-        runArgs.push_back(std::to_string(mapping.host_port()) + ":" +
-                          std::to_string(mapping.container_port()));
+        appendPortPublish(runArgs, mapping);
       }
     }
 
@@ -696,7 +735,17 @@ void DockerRuntime::handleDeploy(const ::highcube::DeployReplica& order, StatusC
       if (fixedHostPorts) {
         std::string busy;
         for (const auto& mapping : order.port_mappings()) {
-          if (mapping.host_port() > 0 && !isHostPortFree(mapping.host_port())) {
+          if (mapping.host_port() <= 0) {
+            continue;
+          }
+          if (mapping.host_port_end() > mapping.host_port()) {
+            if (!busy.empty()) {
+              busy += ", ";
+            }
+            busy += portPublishSpec(mapping);
+            continue;
+          }
+          if (!isHostPortFree(mapping.host_port())) {
             if (!busy.empty()) {
               busy += ", ";
             }

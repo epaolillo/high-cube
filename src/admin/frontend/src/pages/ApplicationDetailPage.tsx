@@ -53,10 +53,66 @@ const cardStyle: React.CSSProperties = {
   padding: 24,
 };
 
+type PortProtocol = 'tcp' | 'udp' | 'both';
+
 type PortMapping = {
   containerPort: number;
+  containerPortEnd: number;
   hostPort: number;
+  hostPortEnd: number;
+  protocol: PortProtocol;
+  // Raw text while the operator is typing a range such as "10000-30000".
+  containerText?: string;
+  hostText?: string;
 };
+
+function formatPortRange(start: number, end: number) {
+  if (!start) return '';
+  if (end > start) return `${start}-${end}`;
+  return String(start);
+}
+
+function parsePortRange(raw: string): { start: number; end: number } | null {
+  const text = raw.trim();
+  if (!text || text === '0') return { start: 0, end: 0 };
+  const match = text.match(/^(\d{1,5})(?:-(\d{1,5}))?$/);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = match[2] ? Number(match[2]) : 0;
+  if (start > 65535 || end > 65535) return null;
+  if (end !== 0 && end < start) return null;
+  return { start, end };
+}
+
+function normalizePortMapping(mapping: Partial<PortMapping>): PortMapping {
+  const protocol: PortProtocol =
+    mapping.protocol === 'udp' || mapping.protocol === 'both' ? mapping.protocol : 'tcp';
+  return {
+    containerPort: Number(mapping.containerPort) || 0,
+    containerPortEnd: Number(mapping.containerPortEnd) || 0,
+    hostPort: Number(mapping.hostPort) || 0,
+    hostPortEnd: Number(mapping.hostPortEnd) || 0,
+    protocol,
+  };
+}
+
+function resolvedPortMapping(mapping: PortMapping): PortMapping | null {
+  const container = parsePortRange(
+    mapping.containerText ?? formatPortRange(mapping.containerPort, mapping.containerPortEnd),
+  );
+  const host = parsePortRange(
+    mapping.hostText ??
+      (mapping.hostPort ? formatPortRange(mapping.hostPort, mapping.hostPortEnd) : '0'),
+  );
+  if (!container || !host || container.start < 1 || container.start > 65535) return null;
+  return {
+    containerPort: container.start,
+    containerPortEnd: container.end,
+    hostPort: host.start,
+    hostPortEnd: host.end,
+    protocol: mapping.protocol === 'udp' || mapping.protocol === 'both' ? mapping.protocol : 'tcp',
+  };
+}
 
 // An empty password on a saved user keeps its current password.
 type BasicAuthRow = {
@@ -671,10 +727,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       );
     }
     const nextMappings: PortMapping[] = Array.isArray(appData.portMappings)
-      ? appData.portMappings.map((m: PortMapping) => ({
-          containerPort: Number(m.containerPort) || 0,
-          hostPort: Number(m.hostPort) || 0,
-        }))
+      ? appData.portMappings.map((m: PortMapping) => normalizePortMapping(m))
       : [];
     const nextKey = JSON.stringify(nextMappings);
     setPortMappings((current) => {
@@ -1080,14 +1133,39 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         verifiedHostPorts.current.add(port);
         setPortMappings((rows) => {
           if (rows.some((row) => row.hostPort > 0)) return rows;
-          if (rows.length === 0) return [{ containerPort, hostPort: port }];
-          const index = rows.findIndex((row) => row.hostPort <= 0);
-          if (index < 0) return [...rows, { containerPort, hostPort: port }];
+          if (rows.length === 0) {
+            return [
+              {
+                containerPort,
+                containerPortEnd: 0,
+                hostPort: port,
+                hostPortEnd: 0,
+                protocol: 'tcp' as const,
+                hostText: String(port),
+              },
+            ];
+          }
+          const index = rows.findIndex((row) => row.hostPort <= 0 && row.hostPortEnd <= 0);
+          if (index < 0) {
+            return [
+              ...rows,
+              {
+                containerPort,
+                containerPortEnd: 0,
+                hostPort: port,
+                hostPortEnd: 0,
+                protocol: 'tcp' as const,
+                hostText: String(port),
+              },
+            ];
+          }
           const next = [...rows];
           next[index] = {
             ...next[index],
             containerPort: next[index].containerPort || containerPort,
             hostPort: port,
+            hostPortEnd: 0,
+            hostText: String(port),
           };
           return next;
         });
@@ -1100,10 +1178,18 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     }
   };
 
-  const hostPortsKey = portMappings.map((mapping) => mapping.hostPort).join(',');
+  const hostPortsKey = portMappings
+    .map((mapping) =>
+      mapping.hostPort > 0 && mapping.hostPortEnd <= mapping.hostPort ? mapping.hostPort : 0,
+    )
+    .join(',');
   useEffect(() => {
     const ports = Array.from(
-      new Set(portMappings.map((mapping) => mapping.hostPort).filter((value) => value > 0)),
+      new Set(
+        portMappings
+          .filter((mapping) => mapping.hostPort > 0 && mapping.hostPortEnd <= mapping.hostPort)
+          .map((mapping) => mapping.hostPort),
+      ),
     );
     if (ports.length === 0) {
       return;
@@ -1142,12 +1228,26 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
     if (!id || saving || !app) return;
     if (isAdmin) {
       for (const mapping of portMappings) {
-        if (!mapping.containerPort || mapping.containerPort < 1 || mapping.containerPort > 65535) {
-          message.error(t('containerPort'));
+        const resolved = resolvedPortMapping(mapping);
+        if (!resolved) {
+          message.error(t('portRangeInvalid'));
           return;
         }
-        if (mapping.hostPort < 0 || mapping.hostPort > 65535) {
-          message.error(t('hostPort'));
+        const containerSpan =
+          (resolved.containerPortEnd > resolved.containerPort
+            ? resolved.containerPortEnd
+            : resolved.containerPort) - resolved.containerPort;
+        const hostSpan =
+          resolved.hostPort === 0
+            ? 0
+            : (resolved.hostPortEnd > resolved.hostPort ? resolved.hostPortEnd : resolved.hostPort) -
+              resolved.hostPort;
+        if (resolved.hostPort === 0 && (resolved.containerPortEnd > resolved.containerPort || resolved.hostPortEnd > 0)) {
+          message.error(t('portRangeInvalid'));
+          return;
+        }
+        if (resolved.hostPort > 0 && containerSpan !== hostSpan) {
+          message.error(t('portRangeInvalid'));
           return;
         }
       }
@@ -1193,8 +1293,15 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       }
       if (isAdmin) {
         patch.useGpu = useGpu;
-        if (JSON.stringify(portMappings) !== serverMappings.current) {
-          patch.portMappings = portMappings;
+        const resolvedMappings = portMappings.map((mapping) => resolvedPortMapping(mapping));
+        if (resolvedMappings.some((mapping) => !mapping)) {
+          message.error(t('portRangeInvalid'));
+          setSaving(false);
+          return;
+        }
+        const normalized = resolvedMappings.map((mapping) => normalizePortMapping(mapping || {}));
+        if (JSON.stringify(normalized) !== serverMappings.current) {
+          patch.portMappings = normalized;
         }
         if (serversLoaded) {
           patch.targetServers = targetRows
@@ -1225,10 +1332,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       }
       const { data } = await api.patch(`/applications/${id}`, patch);
       const savedMappings: PortMapping[] = Array.isArray(data.portMappings)
-        ? data.portMappings.map((mapping: PortMapping) => ({
-            containerPort: Number(mapping.containerPort) || 0,
-            hostPort: Number(mapping.hostPort) || 0,
-          }))
+        ? data.portMappings.map((mapping: PortMapping) => normalizePortMapping(mapping))
         : [];
       serverMappings.current = JSON.stringify(savedMappings);
       setPortMappings(savedMappings);
@@ -1703,7 +1807,18 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           {isAdmin && (
             <Button
               onClick={() =>
-                setPortMappings((rows) => [...rows, { containerPort: app.portsExposes || 80, hostPort: 0 }])
+                setPortMappings((rows) => [
+                  ...rows,
+                  {
+                    containerPort: app.portsExposes || 80,
+                    containerPortEnd: 0,
+                    hostPort: 0,
+                    hostPortEnd: 0,
+                    protocol: 'tcp',
+                    containerText: String(app.portsExposes || 80),
+                    hostText: '0',
+                  },
+                ])
               }
             >
               {t('addExposePort')}
@@ -1743,7 +1858,10 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
             <Typography.Text type="secondary">{t('noPortMappings')}</Typography.Text>
           ) : (
             portMappings.map((mapping, index) => {
-              const status = mapping.hostPort > 0 ? portStatus[mapping.hostPort] : undefined;
+              const status =
+                mapping.hostPort > 0 && mapping.hostPortEnd <= mapping.hostPort
+                  ? portStatus[mapping.hostPort]
+                  : undefined;
               const statusColor: Record<PortCheckStatus, string> = {
                 checking: 'default',
                 available: 'green',
@@ -1760,27 +1878,41 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
                       {t('containerPort')}
                     </Typography.Text>
-                    <InputNumber
-                      min={1}
-                      max={65535}
-                      value={mapping.containerPort || undefined}
+                    <Input
+                      value={
+                        mapping.containerText ??
+                        formatPortRange(mapping.containerPort, mapping.containerPortEnd)
+                      }
+                      placeholder="80 or 10000-30000"
                       disabled={!isAdmin}
-                      onChange={(value) => {
+                      onChange={(event) => {
+                        const text = event.target.value;
+                        const parsed = parsePortRange(text);
                         const next = [...portMappings];
-                        next[index] = { ...next[index], containerPort: value || 0 };
+                        next[index] = {
+                          ...next[index],
+                          containerText: text,
+                          ...(parsed
+                            ? { containerPort: parsed.start, containerPortEnd: parsed.end }
+                            : {}),
+                        };
                         setPortMappings(next);
                       }}
-                      style={{ width: 160 }}
+                      style={{ width: 180 }}
                     />
                   </div>
                   <div>
                     <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
                       {t('hostPort')}
                     </Typography.Text>
-                    <InputNumber
-                      min={0}
-                      max={65535}
-                      value={mapping.hostPort}
+                    <Input
+                      value={
+                        mapping.hostText ??
+                        (mapping.hostPort
+                          ? formatPortRange(mapping.hostPort, mapping.hostPortEnd)
+                          : '0')
+                      }
+                      placeholder="0 or 10000-30000"
                       disabled={!isAdmin}
                       status={
                         status === 'unavailable'
@@ -1789,12 +1921,38 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                             ? 'warning'
                             : undefined
                       }
-                      onChange={(value) => {
+                      onChange={(event) => {
+                        const text = event.target.value;
+                        const parsed = parsePortRange(text);
                         const next = [...portMappings];
-                        next[index] = { ...next[index], hostPort: value ?? 0 };
+                        next[index] = {
+                          ...next[index],
+                          hostText: text,
+                          ...(parsed ? { hostPort: parsed.start, hostPortEnd: parsed.end } : {}),
+                        };
                         setPortMappings(next);
                       }}
-                      style={{ width: 160 }}
+                      style={{ width: 180 }}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                      {t('portProtocol')}
+                    </Typography.Text>
+                    <Select
+                      value={mapping.protocol || 'tcp'}
+                      disabled={!isAdmin}
+                      style={{ width: 140 }}
+                      onChange={(value: PortProtocol) => {
+                        const next = [...portMappings];
+                        next[index] = { ...next[index], protocol: value };
+                        setPortMappings(next);
+                      }}
+                      options={[
+                        { value: 'tcp', label: 'TCP' },
+                        { value: 'udp', label: 'UDP' },
+                        { value: 'both', label: 'TCP/UDP' },
+                      ]}
                     />
                   </div>
                   {status && (

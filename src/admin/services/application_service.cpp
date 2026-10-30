@@ -349,12 +349,40 @@ Application ApplicationService::parseBody(const nlohmann::json& body, const Appl
     for (const auto& item : body.at("portMappings")) {
       PortMapping mapping;
       mapping.containerPort = item.value("containerPort", 0);
+      mapping.containerPortEnd = item.value("containerPortEnd", 0);
       mapping.hostPort = item.value("hostPort", 0);
+      mapping.hostPortEnd = item.value("hostPortEnd", 0);
+      const auto protocol = item.value("protocol", std::string("tcp"));
+      mapping.protocol = protocol == "udp" || protocol == "both" ? protocol : "tcp";
       if (mapping.containerPort < 1 || mapping.containerPort > 65535) {
         throw std::invalid_argument("containerPort must be between 1 and 65535");
       }
+      if (mapping.containerPortEnd < 0 || mapping.containerPortEnd > 65535 ||
+          (mapping.containerPortEnd != 0 && mapping.containerPortEnd < mapping.containerPort)) {
+        throw std::invalid_argument("containerPortEnd must be 0 or a range end >= containerPort");
+      }
       if (mapping.hostPort < 0 || mapping.hostPort > 65535) {
         throw std::invalid_argument("hostPort must be between 0 and 65535");
+      }
+      if (mapping.hostPortEnd < 0 || mapping.hostPortEnd > 65535 ||
+          (mapping.hostPortEnd != 0 && mapping.hostPortEnd < mapping.hostPort)) {
+        throw std::invalid_argument("hostPortEnd must be 0 or a range end >= hostPort");
+      }
+      const int containerSpan =
+          (mapping.containerPortEnd > mapping.containerPort ? mapping.containerPortEnd
+                                                            : mapping.containerPort) -
+          mapping.containerPort;
+      const int hostSpan = mapping.hostPort == 0
+                               ? 0
+                               : (mapping.hostPortEnd > mapping.hostPort ? mapping.hostPortEnd
+                                                                         : mapping.hostPort) -
+                                     mapping.hostPort;
+      if (mapping.hostPort == 0 && (mapping.containerPortEnd > mapping.containerPort ||
+                                    mapping.hostPortEnd > 0)) {
+        throw std::invalid_argument("a port range must be published on the host");
+      }
+      if (mapping.hostPort > 0 && containerSpan != hostSpan) {
+        throw std::invalid_argument("host and container port ranges must have the same size");
       }
       app.portMappings.push_back(mapping);
     }

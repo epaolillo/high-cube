@@ -60,7 +60,11 @@ nlohmann::json applicationToJson(const Application& app) {
   nlohmann::json portMappings = nlohmann::json::array();
   for (const auto& mapping : app.portMappings) {
     portMappings.push_back(
-        {{"containerPort", mapping.containerPort}, {"hostPort", mapping.hostPort}});
+        {{"containerPort", mapping.containerPort},
+         {"containerPortEnd", mapping.containerPortEnd},
+         {"hostPort", mapping.hostPort},
+         {"hostPortEnd", mapping.hostPortEnd},
+         {"protocol", mapping.protocol.empty() ? "tcp" : mapping.protocol}});
   }
   nlohmann::json targetServers = nlohmann::json::array();
   for (const auto& target : app.targetServers) {

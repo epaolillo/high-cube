@@ -56,18 +56,27 @@ export function HostnameFields({
   };
 
   const removeRow = (index: number) => {
-    if (index === 0) return;
     onChange(value.filter((_, i) => i !== index));
   };
 
   if (domains.length === 0) {
-    return (
-      <Typography.Text type="danger">{t('noAssignedDomains')}</Typography.Text>
-    );
+    if (value.length === 0) {
+      return (
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          {t('noHostname')}
+        </Typography.Paragraph>
+      );
+    }
+    return <Typography.Text type="danger">{t('noAssignedDomains')}</Typography.Text>;
   }
 
   return (
     <div>
+      {value.length === 0 ? (
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          {t('noHostname')}
+        </Typography.Paragraph>
+      ) : null}
       {value.map((row, index) => {
         const domain = domains.find((d) => d.id === row.baseDomainId) || domains[0];
         return (
@@ -146,11 +155,9 @@ export function HostnameFields({
                     {t('retryCertificate')}
                   </Button>
                 ) : null}
-                {index > 0 && (
-                  <Button danger type="link" onClick={() => removeRow(index)}>
-                    {t('remove')}
-                  </Button>
-                )}
+                <Button danger type="link" onClick={() => removeRow(index)}>
+                  {t('remove')}
+                </Button>
               </Space>
             </div>
           </div>

@@ -472,6 +472,17 @@ void AgentHub::applyDbManageEffect(const DbManageEffect& effect, const std::stri
       repos_.updateApplicationEnv(app->id, env.dump());
     }
   }
+  if (!effect.forgetPasswordUser.empty() && effect.forgetPasswordUser != effect.storedPasswordUser) {
+    if (effect.storedPassword.empty() && !effect.storedPasswordUser.empty()) {
+      repos_.renameDbUserPassword(effect.applicationId, effect.forgetPasswordUser,
+                                  effect.storedPasswordUser);
+    } else {
+      repos_.deleteDbUserPassword(effect.applicationId, effect.forgetPasswordUser);
+    }
+  }
+  if (!effect.storedPasswordUser.empty() && !effect.storedPassword.empty()) {
+    repos_.upsertDbUserPassword(effect.applicationId, effect.storedPasswordUser, effect.storedPassword);
+  }
   if (!effect.healthCommand.empty()) {
     repos_.updateHealthCheckCommand(effect.applicationId, effect.healthCommand);
     const auto result = nlohmann::json::parse(resultJson.empty() ? "{}" : resultJson, nullptr, false);
@@ -996,7 +1007,10 @@ void AgentHub::deployReplica(int64_t replicaId) {
   for (const auto& mapping : app->portMappings) {
     auto* port = order.add_port_mappings();
     port->set_container_port(mapping.containerPort);
+    port->set_container_port_end(mapping.containerPortEnd);
     port->set_host_port(mapping.hostPort);
+    port->set_host_port_end(mapping.hostPortEnd);
+    port->set_protocol(mapping.protocol.empty() ? "tcp" : mapping.protocol);
   }
 
   if (app->githubAppId && githubApps_) {

@@ -38,7 +38,11 @@ std::vector<PortMapping> parsePortMappings(const std::string& json) {
     }
     PortMapping mapping;
     mapping.containerPort = item.value("containerPort", 0);
+    mapping.containerPortEnd = item.value("containerPortEnd", 0);
     mapping.hostPort = item.value("hostPort", 0);
+    mapping.hostPortEnd = item.value("hostPortEnd", 0);
+    const auto protocol = item.value("protocol", std::string("tcp"));
+    mapping.protocol = protocol == "udp" || protocol == "both" ? protocol : "tcp";
     if (mapping.containerPort > 0) {
       rows.push_back(mapping);
     }
@@ -49,7 +53,11 @@ std::vector<PortMapping> parsePortMappings(const std::string& json) {
 std::string portMappingsToJson(const std::vector<PortMapping>& mappings) {
   nlohmann::json rows = nlohmann::json::array();
   for (const auto& mapping : mappings) {
-    rows.push_back({{"containerPort", mapping.containerPort}, {"hostPort", mapping.hostPort}});
+    rows.push_back({{"containerPort", mapping.containerPort},
+                    {"containerPortEnd", mapping.containerPortEnd},
+                    {"hostPort", mapping.hostPort},
+                    {"hostPortEnd", mapping.hostPortEnd},
+                    {"protocol", mapping.protocol.empty() ? "tcp" : mapping.protocol}});
   }
   return rows.dump();
 }
@@ -1145,8 +1153,57 @@ void Repositories::setPendingRedeploy(int64_t id, bool pending) {
 }
 
 void Repositories::deleteApplication(int64_t id) {
+  {
+    SQLite::Statement passwords(database_.db(),
+                               "DELETE FROM application_db_user_passwords WHERE application_id=?");
+    passwords.bind(1, id);
+    passwords.exec();
+  }
   SQLite::Statement st(database_.db(), "DELETE FROM applications WHERE id=?");
   st.bind(1, id);
+  st.exec();
+}
+
+std::unordered_map<std::string, std::string> Repositories::listDbUserPasswords(int64_t applicationId) {
+  std::unordered_map<std::string, std::string> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT username, password FROM application_db_user_passwords "
+                       "WHERE application_id=?");
+  st.bind(1, applicationId);
+  while (st.executeStep()) {
+    rows[st.getColumn(0).getString()] = st.getColumn(1).getString();
+  }
+  return rows;
+}
+
+void Repositories::upsertDbUserPassword(int64_t applicationId, const std::string& username,
+                                        const std::string& password) {
+  SQLite::Statement st(database_.db(),
+                       "INSERT INTO application_db_user_passwords (application_id, username, password) "
+                       "VALUES (?,?,?) "
+                       "ON CONFLICT(application_id, username) DO UPDATE SET password=excluded.password");
+  st.bind(1, applicationId);
+  st.bind(2, username);
+  st.bind(3, password);
+  st.exec();
+}
+
+void Repositories::renameDbUserPassword(int64_t applicationId, const std::string& from,
+                                        const std::string& to) {
+  SQLite::Statement st(database_.db(),
+                       "UPDATE application_db_user_passwords SET username=? "
+                       "WHERE application_id=? AND username=?");
+  st.bind(1, to);
+  st.bind(2, applicationId);
+  st.bind(3, from);
+  st.exec();
+}
+
+void Repositories::deleteDbUserPassword(int64_t applicationId, const std::string& username) {
+  SQLite::Statement st(database_.db(),
+                       "DELETE FROM application_db_user_passwords WHERE application_id=? AND username=?");
+  st.bind(1, applicationId);
+  st.bind(2, username);
   st.exec();
 }
 

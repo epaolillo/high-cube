@@ -193,7 +193,13 @@ void NginxProxy::ensureHttpChallengeSite(const std::string& hostname) {
 
 std::string NginxProxy::renderApplicationSite(const Application& app) {
   if (app.hostnames.empty()) {
-    return "nginx site skipped: application has no hostnames";
+    // Databases and other internal services publish nothing. Drop a site left
+    // behind by a hostname that was just removed.
+    std::error_code ec;
+    std::filesystem::remove(applicationSitePath(app.id), ec);
+    std::filesystem::remove(basicAuthFilePath(app.id), ec);
+    const auto reloadResult = reload();
+    return "nginx site removed: application has no hostnames\n" + reloadResult;
   }
   auto replicas = repos_.listReplicas(app.id, ListQuery{1, 1000, "", "asc", ""});
   std::ostringstream upstream;

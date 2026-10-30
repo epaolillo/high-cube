@@ -51,7 +51,10 @@ message VolumeSpec {
 
 message PortMapping {
   int32 container_port = 1;
-  int32 host_port = 2; // 0 = agent picks a free host port
+  int32 host_port = 2; // 0 = not published on the host
+  int32 container_port_end = 3; // 0 = single port; otherwise inclusive range end
+  int32 host_port_end = 4;      // 0 = single port; otherwise inclusive range end
+  string protocol = 5;          // tcp | udp | both. Empty means tcp.
 }
 
 message DeployReplica {

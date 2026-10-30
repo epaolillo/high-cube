@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace highcube::admin {
@@ -93,6 +94,12 @@ public:
   void updateHealthCheckCommand(int64_t id, const std::string& command);
   void setPendingRedeploy(int64_t id, bool pending);
   void deleteApplication(int64_t id);
+  // Plaintext passwords assigned from database management, keyed by username.
+  std::unordered_map<std::string, std::string> listDbUserPasswords(int64_t applicationId);
+  void upsertDbUserPassword(int64_t applicationId, const std::string& username,
+                            const std::string& password);
+  void renameDbUserPassword(int64_t applicationId, const std::string& from, const std::string& to);
+  void deleteDbUserPassword(int64_t applicationId, const std::string& username);
   void setTlsStatus(int64_t id, const std::string& status);
   void setDeployKey(int64_t id, const std::string& pub, const std::string& priv);
   std::vector<Application> autocompleteApplications(const std::string& q, bool privateOnly = false,

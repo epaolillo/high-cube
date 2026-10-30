@@ -1,3 +1,4 @@
+import { CopyOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Form, Input, Modal, Select, Space, Spin, Table, Tabs, Tag, Typography, message } from 'antd';
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -20,6 +21,7 @@ type DbUser = {
   host?: string;
   protected?: boolean;
   superuser?: boolean;
+  password?: string;
 };
 
 type GrantRow = DbUser & {
@@ -203,8 +205,17 @@ export function DatabaseManagementTab({
     setUserModal({ mode: 'create' });
   };
 
+  const copyPassword = async (password: string) => {
+    try {
+      await navigator.clipboard.writeText(password);
+      message.success(t('copied'));
+    } catch {
+      message.error(t('copyFailed'));
+    }
+  };
+
   const openEditUser = (user: DbUser) => {
-    userForm.setFieldsValue({ name: user.name, password: '' });
+    userForm.setFieldsValue({ name: user.name, password: user.password || '' });
     setUserModal({ mode: 'edit', user });
   };
 
@@ -367,6 +378,27 @@ export function DatabaseManagementTab({
         columns={[
           { title: t('dbUserName'), dataIndex: 'name' },
           {
+            title: t('dbUserPassword'),
+            dataIndex: 'password',
+            render: (password?: string) =>
+              password ? (
+                <Space size={4}>
+                  <Typography.Text code style={{ userSelect: 'all' }}>
+                    {password}
+                  </Typography.Text>
+                  <Button
+                    size="small"
+                    type="text"
+                    aria-label={t('copy')}
+                    icon={<CopyOutlined />}
+                    onClick={() => void copyPassword(password)}
+                  />
+                </Space>
+              ) : (
+                <Typography.Text type="secondary">{t('dbPasswordUnknown')}</Typography.Text>
+              ),
+          },
+          {
             title: t('role'),
             render: (_value, row: DbUser) => (
               <Space size={4}>
@@ -508,7 +540,21 @@ export function DatabaseManagementTab({
             extra={userModal?.mode === 'edit' ? t('passwordOptional') : undefined}
             rules={userModal?.mode === 'create' ? [{ required: true, message: t('dbPasswordRequired') }] : []}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input
+              autoComplete="off"
+              addonAfter={
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={t('copy')}
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    const password = userForm.getFieldValue('password');
+                    if (password) void copyPassword(password);
+                  }}
+                />
+              }
+            />
           </Form.Item>
         </Form>
       </Modal>

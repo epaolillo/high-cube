@@ -77,10 +77,15 @@ struct ApplicationServerTarget {
 
 struct PortMapping {
   int containerPort = 0;
-  int hostPort = 0;  // 0 = agent picks a free host port
+  int containerPortEnd = 0;  // 0 = single port; otherwise inclusive range end
+  int hostPort = 0;           // 0 = not published on the host
+  int hostPortEnd = 0;        // 0 = single port; otherwise inclusive range end
+  std::string protocol = "tcp";  // tcp | udp | both
 
   bool operator==(const PortMapping& other) const {
-    return containerPort == other.containerPort && hostPort == other.hostPort;
+    return containerPort == other.containerPort && containerPortEnd == other.containerPortEnd &&
+           hostPort == other.hostPort && hostPortEnd == other.hostPortEnd &&
+           protocol == other.protocol;
   }
 };
 

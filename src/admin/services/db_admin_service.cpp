@@ -319,6 +319,10 @@ nlohmann::json DatabaseAdminService::start(int64_t applicationId, const nlohmann
     requirePassword(password, true);
     payload["name"] = name;
     payload["password"] = password;
+    if (name != creds.adminUser) {
+      effect.storedPasswordUser = name;
+      effect.storedPassword = password;
+    }
   } else if (op == "update_user") {
     const auto name = body.value("name", std::string{});
     const auto newName = body.value("newName", std::string{});
@@ -348,6 +352,15 @@ nlohmann::json DatabaseAdminService::start(int64_t applicationId, const nlohmann
         if (!effect.healthCommand.empty()) {
           payload["healthCommand"] = effect.healthCommand;
         }
+      } else {
+        effect.storedPasswordUser = rename ? newName : name;
+        effect.storedPassword = password;
+      }
+    }
+    if (rename) {
+      effect.forgetPasswordUser = name;
+      if (effect.storedPasswordUser.empty()) {
+        effect.storedPasswordUser = newName;
       }
     }
   } else if (op == "delete_user") {
@@ -357,6 +370,7 @@ nlohmann::json DatabaseAdminService::start(int64_t applicationId, const nlohmann
       throw std::invalid_argument("The management user cannot be deleted");
     }
     payload["name"] = name;
+    effect.forgetPasswordUser = name;
   } else if (op == "create_database") {
     const auto name = body.value("name", std::string{});
     requireIdent(name, "name");
@@ -436,7 +450,32 @@ nlohmann::json DatabaseAdminService::poll(int64_t applicationId, const std::stri
   }
   if (poll.status == "ok") {
     auto result = nlohmann::json::parse(poll.resultJson.empty() ? "{}" : poll.resultJson, nullptr, false);
-    body["result"] = result.is_discarded() ? nlohmann::json::object() : result;
+    if (result.is_discarded()) {
+      result = nlohmann::json::object();
+    }
+    if (result.contains("users") && result.at("users").is_array()) {
+      try {
+        const auto creds = credentialsFor(*app);
+        const auto saved = ctx_.repos->listDbUserPasswords(applicationId);
+        for (auto& user : result.at("users")) {
+          if (!user.is_object()) {
+            continue;
+          }
+          const auto name = user.value("name", std::string{});
+          if (name == creds.adminUser) {
+            user["password"] = creds.adminPassword;
+          } else {
+            const auto it = saved.find(name);
+            if (it != saved.end()) {
+              user["password"] = it->second;
+            }
+          }
+        }
+      } catch (const std::exception&) {
+        // A catalog without credentials still lists the accounts.
+      }
+    }
+    body["result"] = result;
   }
   return body;
 }
