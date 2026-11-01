@@ -1,11 +1,14 @@
 #include "services/services.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
+#include <vector>
 
 namespace highcube::admin {
 namespace {
@@ -55,9 +58,21 @@ nlohmann::json SettingsService::listBaseDomains(const ListQuery& query) {
 }
 
 nlohmann::json SettingsService::listBaseDomainsUsedByUserApplications(int64_t userId) {
+  std::vector<BaseDomain> domains = ctx_.repos->listBaseDomainsForUser(userId);
+  std::unordered_set<int64_t> seen;
+  for (const auto& domain : domains) {
+    seen.insert(domain.id);
+  }
+  for (const auto& domain : ctx_.repos->listBaseDomainsUsedByUserApplications(userId)) {
+    if (seen.insert(domain.id).second) {
+      domains.push_back(domain);
+    }
+  }
+  std::sort(domains.begin(), domains.end(),
+            [](const BaseDomain& a, const BaseDomain& b) { return a.hostname < b.hostname; });
   nlohmann::json rows = nlohmann::json::array();
-  for (const auto& d : ctx_.repos->listBaseDomainsUsedByUserApplications(userId)) {
-    rows.push_back(baseDomainToJson(*ctx_.repos, d));
+  for (const auto& domain : domains) {
+    rows.push_back(baseDomainToJson(*ctx_.repos, domain));
   }
   return {{"rows", rows}, {"total", rows.size()}};
 }

@@ -98,7 +98,8 @@ class SettingsService {
 public:
   explicit SettingsService(AppContext& ctx);
   nlohmann::json listBaseDomains(const ListQuery& query);
-  // Read-only view for the User role: only base domains used by the user's applications.
+  // Read-only view for the User role: domains assigned to the user, plus any
+  // domain already used by one of their applications.
   nlohmann::json listBaseDomainsUsedByUserApplications(int64_t userId);
   nlohmann::json createBaseDomain(const nlohmann::json& body, const User& actor);
   nlohmann::json updateBaseDomain(int64_t id, const nlohmann::json& body);
@@ -115,8 +116,8 @@ class ServerService {
 public:
   explicit ServerService(AppContext& ctx);
   nlohmann::json list(const ListQuery& query);
-  // Read-only view for the User role: only servers hosting the user's applications, and only
-  // their name, status and current metrics.
+  // Read-only view for the User role: servers assigned to the user, plus any
+  // server already hosting one of their applications. Name, status and metrics only.
   nlohmann::json listHostingUserApplications(int64_t userId);
   nlohmann::json get(int64_t id);
   nlohmann::json create(const nlohmann::json& body);

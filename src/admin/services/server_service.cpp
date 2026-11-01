@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 namespace highcube::admin {
@@ -233,7 +234,24 @@ nlohmann::json ServerService::list(const ListQuery& query) {
 }
 
 nlohmann::json ServerService::listHostingUserApplications(int64_t userId) {
-  const auto servers = ctx_.repos->listServersHostingUserApplications(userId);
+  std::vector<Server> servers;
+  std::unordered_set<int64_t> seen;
+  auto add = [&](const Server& server) {
+    if (!seen.insert(server.id).second) {
+      return;
+    }
+    servers.push_back(server);
+  };
+  for (const auto id : ctx_.repos->getUserServers(userId)) {
+    if (const auto server = ctx_.repos->findServerById(id)) {
+      add(*server);
+    }
+  }
+  for (const auto& server : ctx_.repos->listServersHostingUserApplications(userId)) {
+    add(server);
+  }
+  std::sort(servers.begin(), servers.end(),
+            [](const Server& a, const Server& b) { return a.name < b.name; });
   nlohmann::json rows = nlohmann::json::array();
   for (const auto& server : servers) {
     rows.push_back({{"id", server.id},

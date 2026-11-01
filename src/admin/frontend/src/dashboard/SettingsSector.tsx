@@ -28,7 +28,7 @@ const REDEPLOY_COLOR: Record<RedeployStatus, string> = {
   error: 'red',
 };
 
-// readOnly is the User role view: the base domains of its own applications, greyed out, no actions.
+// readOnly is the User role view: domains assigned to the user, greyed out, no actions.
 export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
   const { data, refresh } = useDashboardState();
