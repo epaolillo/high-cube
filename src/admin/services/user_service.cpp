@@ -2,6 +2,15 @@
 #include "services/services.hpp"
 
 namespace highcube::admin {
+namespace {
+
+void requireAdmin(const User& actor, const char* action) {
+  if (actor.role != "admin") {
+    throw ForbiddenError(action);
+  }
+}
+
+}  // namespace
 
 UserService::UserService(AppContext& ctx) : ctx_(ctx) {}
 
@@ -39,7 +48,8 @@ nlohmann::json UserService::get(int64_t id) {
   return userToJson(*user, true);
 }
 
-nlohmann::json UserService::create(const nlohmann::json& body, const User&) {
+nlohmann::json UserService::create(const nlohmann::json& body, const User& actor) {
+  requireAdmin(actor, "Only an admin can create users");
   const auto roleCode = body.at("role").get<std::string>();
   if (roleCode != "admin" && roleCode != "user") {
     throw std::invalid_argument("role must be admin or user");
@@ -66,7 +76,17 @@ nlohmann::json UserService::update(int64_t id, const nlohmann::json& body, const
   if (!user) {
     throw std::runtime_error("User not found");
   }
-  // Profile self-edit path may omit role.
+  // A user may edit their own name, password, locale and avatar. Role changes,
+  // including roleId, are admin-only so a user cannot promote themselves.
+  if (actor.role != "admin") {
+    if (actor.id != id) {
+      throw ForbiddenError("Only an admin can edit another user");
+    }
+    if (body.contains("role") || body.contains("roleId")) {
+      throw ForbiddenError("Only an admin can change a role");
+    }
+  }
+  // roleId is never applied on its own. The role code is the only accepted value.
   if (body.contains("role")) {
     const auto roleCode = body.at("role").get<std::string>();
     if (roleCode != "admin" && roleCode != "user") {
@@ -100,6 +120,7 @@ nlohmann::json UserService::update(int64_t id, const nlohmann::json& body, const
 }
 
 void UserService::remove(int64_t id, const User& actor) {
+  requireAdmin(actor, "Only an admin can delete users");
   if (id == actor.id) {
     throw std::runtime_error("Cannot delete the current user");
   }
@@ -119,7 +140,8 @@ void UserService::remove(int64_t id, const User& actor) {
   ctx_.repos->deleteUser(id);
 }
 
-nlohmann::json UserService::setServers(int64_t id, const nlohmann::json& body) {
+nlohmann::json UserService::setServers(int64_t id, const nlohmann::json& body, const User& actor) {
+  requireAdmin(actor, "Only an admin can assign servers");
   auto user = ctx_.repos->findUserById(id);
   if (!user) {
     throw std::runtime_error("User not found");
@@ -136,7 +158,8 @@ nlohmann::json UserService::setServers(int64_t id, const nlohmann::json& body) {
   return userToJson(*ctx_.repos->findUserById(id), true);
 }
 
-nlohmann::json UserService::setDomains(int64_t id, const nlohmann::json& body) {
+nlohmann::json UserService::setDomains(int64_t id, const nlohmann::json& body, const User& actor) {
+  requireAdmin(actor, "Only an admin can assign domains");
   auto user = ctx_.repos->findUserById(id);
   if (!user) {
     throw std::runtime_error("User not found");

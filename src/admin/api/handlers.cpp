@@ -149,13 +149,15 @@ void registerHandlers(Router& router, AppContext& ctx) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return jsonResponse(http::status::ok,
                         UserService(ctx).setServers(std::stoll(c.params["id"]),
-                                                    nlohmann::json::parse(c.request.body())));
+                                                    nlohmann::json::parse(c.request.body()),
+                                                    *c.user));
   });
   router.add("PUT", "/api/users/:id/domains", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return jsonResponse(http::status::ok,
                         UserService(ctx).setDomains(std::stoll(c.params["id"]),
-                                                    nlohmann::json::parse(c.request.body())));
+                                                    nlohmann::json::parse(c.request.body()),
+                                                    *c.user));
   });
   router.add("DELETE", "/api/users/:id", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");

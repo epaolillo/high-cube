@@ -70,8 +70,8 @@ public:
   nlohmann::json create(const nlohmann::json& body, const User& actor);
   nlohmann::json update(int64_t id, const nlohmann::json& body, const User& actor);
   void remove(int64_t id, const User& actor);
-  nlohmann::json setServers(int64_t id, const nlohmann::json& body);
-  nlohmann::json setDomains(int64_t id, const nlohmann::json& body);
+  nlohmann::json setServers(int64_t id, const nlohmann::json& body, const User& actor);
+  nlohmann::json setDomains(int64_t id, const nlohmann::json& body, const User& actor);
   nlohmann::json listMyBaseDomains(const User& actor);
   nlohmann::json hostnameSuggestion();
   nlohmann::json autocomplete(const std::string& q);
