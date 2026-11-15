@@ -469,24 +469,43 @@ nlohmann::json GithubAppService::listRepositories(int64_t id, const User& actor,
   if (page < 1) {
     page = 1;
   }
-  if (pageSize != 10 && pageSize != 100 && pageSize != 1000) {
-    pageSize = 30;
-  }
-  if (pageSize > 100) {
-    pageSize = 100;
-  }
   const auto token = authSingleton().installationToken(app);
-  const auto path = "/installation/repositories?per_page=" + std::to_string(pageSize) +
-                    "&page=" + std::to_string(page);
-  const auto json = httpSingleton().getJson(path, token);
-  nlohmann::json rows = nlohmann::json::array();
-  for (const auto& repo : json.value("repositories", nlohmann::json::array())) {
-    rows.push_back({{"id", repo.value("id", 0)},
-                    {"fullName", repo.value("full_name", "")},
-                    {"private", repo.value("private", false)},
-                    {"defaultBranch", repo.value("default_branch", "main")}});
+  // GitHub returns at most 100 installation repositories per request. Walk every
+  // page so the picker can show the whole installation, not only the first one.
+  constexpr int kGithubPageSize = 100;
+  constexpr int kMaxPages = 100;
+  nlohmann::json all = nlohmann::json::array();
+  int total = 0;
+  for (int githubPage = 1; githubPage <= kMaxPages; ++githubPage) {
+    const auto path = "/installation/repositories?per_page=" + std::to_string(kGithubPageSize) +
+                      "&page=" + std::to_string(githubPage);
+    const auto json = httpSingleton().getJson(path, token);
+    total = json.value("total_count", total);
+    const auto repos = json.value("repositories", nlohmann::json::array());
+    if (!repos.is_array() || repos.empty()) {
+      break;
+    }
+    for (const auto& repo : repos) {
+      all.push_back({{"id", repo.value("id", 0)},
+                     {"fullName", repo.value("full_name", "")},
+                     {"private", repo.value("private", false)},
+                     {"defaultBranch", repo.value("default_branch", "main")}});
+    }
+    if (static_cast<int>(all.size()) >= total || static_cast<int>(repos.size()) < kGithubPageSize) {
+      break;
+    }
   }
-  return {{"rows", rows}, {"total", json.value("total_count", static_cast<int>(rows.size()))}};
+  const int totalCount = total > 0 ? total : static_cast<int>(all.size());
+  // pageSize <= 0 returns the full installation. A positive size slices that list.
+  if (pageSize <= 0) {
+    return {{"rows", all}, {"total", totalCount}};
+  }
+  nlohmann::json rows = nlohmann::json::array();
+  const auto start = static_cast<size_t>(page - 1) * static_cast<size_t>(pageSize);
+  for (size_t i = start; i < all.size() && rows.size() < static_cast<size_t>(pageSize); ++i) {
+    rows.push_back(std::move(all[i]));
+  }
+  return {{"rows", rows}, {"total", totalCount}};
 }
 
 nlohmann::json GithubAppService::dockerfilePorts(const User& actor,

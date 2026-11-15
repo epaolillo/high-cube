@@ -73,7 +73,7 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
       return;
     }
     api
-      .get(`/github-apps/${githubAppId}/repositories`, { params: { page: 1, pageSize: 100 } })
+      .get(`/github-apps/${githubAppId}/repositories`, { params: { pageSize: 0 } })
       .then(({ data }) => {
         setRepos(
           data.rows.map((repo: Repo) => ({

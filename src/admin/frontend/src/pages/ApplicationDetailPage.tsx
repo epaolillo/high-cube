@@ -904,7 +904,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
       return;
     }
     api
-      .get(`/github-apps/${sourceGithubAppId}/repositories`, { params: { page: 1, pageSize: 100 } })
+      .get(`/github-apps/${sourceGithubAppId}/repositories`, { params: { pageSize: 0 } })
       .then(({ data }) => {
         const rows = (data.rows || []).map((row: GithubRepositoryOption) => ({
           value: row.fullName,
