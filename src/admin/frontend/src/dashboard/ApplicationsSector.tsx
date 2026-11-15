@@ -3,12 +3,15 @@ import {
   ArrowUpOutlined,
   DeleteOutlined,
   GithubOutlined,
+  LoadingOutlined,
+  PauseOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   RocketOutlined,
   SlidersOutlined,
 } from '@ant-design/icons';
-import { Select, Space, Tag, Tooltip, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { Select, Space, Tooltip, message } from 'antd';
+import { cloneElement, useEffect, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { APP_CATEGORIES, getAppCategory, type AppCategory } from '../components/appCategories';
@@ -38,7 +41,11 @@ type AppRow = {
   diskUsedBytes?: number;
 };
 
-const STATUS_COLOR: Record<string, string> = { running: 'green', deploying: 'blue', stopped: 'default' };
+const STATUS_ICON = {
+  running: <PlayCircleOutlined />,
+  deploying: <LoadingOutlined spin />,
+  stopped: <PauseOutlined />,
+};
 
 export function ApplicationsSector({
   isAdmin,
@@ -62,23 +69,12 @@ export function ApplicationsSector({
   const total = data.applications.total;
   const [category, setCategory] = useState<AppCategory>('other');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
-  const [sel, setSel] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const [iconEdit, setIconEdit] = useState<AppRow | null>(null);
 
   useEffect(() => {
     setApplicationsParams(category, order);
   }, [category, order, setApplicationsParams]);
-
-  useEffect(() => setSel(new Set()), [category, order]);
-
-  const toggle = (id: number) =>
-    setSel((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   const deployOne = async (id: number) => {
     await api.post(`/applications/${id}/deployments`);
@@ -92,20 +88,6 @@ export function ApplicationsSector({
         refresh();
       });
     });
-  const bulkDeploy = async () => {
-    await Promise.all([...sel].map((id) => api.post(`/applications/${id}/deployments`)));
-    message.success(t('deployStarted'));
-    setSel(new Set());
-    refresh();
-  };
-  const bulkDelete = async () => {
-    if (!(await confirmDestructive(t, { text: t('confirmDeleteManyBody', { count: sel.size }) }))) return;
-    await Promise.all([...sel].map((id) => api.delete(`/applications/${id}`)));
-    message.success(t('deleted'));
-    setSel(new Set());
-    refresh();
-  };
-
   return (
     <section className="hc-sector hc-sector--applications">
       <div className="hc-sector__head">
@@ -149,20 +131,6 @@ export function ApplicationsSector({
         </Tooltip>
       </div>
 
-      <div className="hc-bulkbar">
-        <span>{t('selectedCount', { count: sel.size })}</span>
-        <span className="hc-bulkbar__spacer" />
-        <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={bulkDeploy}>
-          {t('deploy')}
-        </button>
-        <button type="button" className="hc-linkbtn" data-tone="danger" disabled={sel.size === 0} onClick={bulkDelete}>
-          {t('delete')}
-        </button>
-        <button type="button" className="hc-linkbtn" disabled={sel.size === 0} onClick={() => setSel(new Set())}>
-          {t('clearSelection')}
-        </button>
-      </div>
-
       <div className="hc-sector__body hc-scroll">
         {visibleRows.length === 0 ? (
           <div className="hc-sector__empty">—</div>
@@ -175,15 +143,10 @@ export function ApplicationsSector({
                 : a.hostname
                   ? [{ hostname: a.hostname, tlsStatus: a.tlsStatus }]
                   : [];
+            const categoryDef = getAppCategory(a.type);
             return (
               <div className="hc-row" key={a.id}>
                 <div className="hc-row__head">
-                  <input
-                    type="checkbox"
-                    className="hc-row__check"
-                    checked={sel.has(a.id)}
-                    onChange={() => toggle(a.id)}
-                  />
                   <Tooltip title={t('iconEditTitle')}>
                     <button
                       type="button"
@@ -197,11 +160,21 @@ export function ApplicationsSector({
                   <span className="hc-row__name" title={a.name}>
                     {a.name}
                   </span>
-                  <Tag style={{ margin: 0 }}>{t(getAppCategory(a.type).labelKey)}</Tag>
-                  <Tag color={STATUS_COLOR[status]} style={{ margin: 0 }}>
-                    {t(`runtimeStatus_${status}`)}
-                  </Tag>
                   <div className="hc-acts">
+                    <Tooltip title={t(categoryDef.labelKey)}>
+                      <span className="hc-iconbtn" data-status="meta" aria-label={t(categoryDef.labelKey)}>
+                        {cloneElement(categoryDef.icon as ReactElement)}
+                      </span>
+                    </Tooltip>
+                    <Tooltip title={t(`runtimeStatus_${status}`)}>
+                      <span
+                        className="hc-iconbtn"
+                        data-status={status}
+                        aria-label={t(`runtimeStatus_${status}`)}
+                      >
+                        {STATUS_ICON[status]}
+                      </span>
+                    </Tooltip>
                     <Tooltip title={t('deploy')}>
                       <button type="button" className="hc-iconbtn" onClick={() => void deployOne(a.id)}>
                         <RocketOutlined />

@@ -370,6 +370,27 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Informational icons (category, runtime). Same box as the action buttons, not clickable. */
+.hc-iconbtn[data-status] {
+  cursor: default;
+}
+.hc-iconbtn[data-status='meta'],
+.hc-iconbtn[data-status='meta']:hover,
+.hc-iconbtn[data-status='stopped'],
+.hc-iconbtn[data-status='stopped']:hover {
+  color: #8898aa;
+  border-color: #dfe5ec;
+}
+.hc-iconbtn[data-status='running'],
+.hc-iconbtn[data-status='running']:hover {
+  color: #09825d;
+  border-color: #dfe5ec;
+}
+.hc-iconbtn[data-status='deploying'],
+.hc-iconbtn[data-status='deploying']:hover {
+  color: #2f6feb;
+  border-color: #dfe5ec;
+}
 
 .hc-addbtn {
   display: inline-flex;
