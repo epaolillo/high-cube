@@ -176,16 +176,29 @@ nlohmann::json chartFromSamples(const std::vector<HostSample>& samples) {
   nlohmann::json cpuSeries = nlohmann::json::array();
   nlohmann::json memorySeries = nlohmann::json::array();
   nlohmann::json gpuSeries = nlohmann::json::array();
+  nlohmann::json points = nlohmann::json::array();
   if (samples.size() >= 2) {
     const int intervals = static_cast<int>(samples.size()) - 1;
-    const int buckets = std::min(60, intervals);
+    const int buckets = std::min(480, intervals);
+    // A week of one-second samples is hundreds of thousands of rows. Average them
+    // into a few hundred points and keep the time of each bucket so a chart can
+    // label its axes and zoom.
     struct Bucket {
+      std::string at;
       double cpu = 0;
       int cpuCount = 0;
       double memory = 0;
       int memoryCount = 0;
+      double disk = 0;
+      int diskCount = 0;
+      double load1 = 0;
+      double load5 = 0;
+      double load15 = 0;
+      int loadCount = 0;
       double gpu = 0;
       int gpuCount = 0;
+      double gpuMemory = 0;
+      int gpuMemoryCount = 0;
     };
     std::vector<Bucket> aggs(static_cast<std::size_t>(buckets));
     bool anyGpu = false;
@@ -194,6 +207,7 @@ nlohmann::json chartFromSamples(const std::vector<HostSample>& samples) {
       auto& agg = aggs[static_cast<std::size_t>(bucket)];
       const auto& current = samples[static_cast<std::size_t>(i)];
       const auto& previous = samples[static_cast<std::size_t>(i - 1)];
+      agg.at = current.at;
       if (previous.cpu.ok && current.cpu.ok) {
         agg.cpu += cpuPercent(previous.cpu, current.cpu);
         ++agg.cpuCount;
@@ -202,10 +216,22 @@ nlohmann::json chartFromSamples(const std::vector<HostSample>& samples) {
         agg.memory += percent(current.memoryTotalKb - current.memoryAvailableKb, current.memoryTotalKb);
         ++agg.memoryCount;
       }
+      if (current.diskTotalBytes > 0) {
+        agg.disk += percent(current.diskTotalBytes - current.diskAvailableBytes, current.diskTotalBytes);
+        ++agg.diskCount;
+      }
+      agg.load1 += current.load1;
+      agg.load5 += current.load5;
+      agg.load15 += current.load15;
+      ++agg.loadCount;
       if (current.gpuPresent) {
         anyGpu = true;
         agg.gpu += current.gpuPercent;
         ++agg.gpuCount;
+        if (current.gpuMemoryTotalMb > 0) {
+          agg.gpuMemory += percent(current.gpuMemoryUsedMb, current.gpuMemoryTotalMb);
+          ++agg.gpuMemoryCount;
+        }
       }
     }
     for (const auto& agg : aggs) {
@@ -214,9 +240,28 @@ nlohmann::json chartFromSamples(const std::vector<HostSample>& samples) {
       if (anyGpu) {
         gpuSeries.push_back(agg.gpuCount > 0 ? agg.gpu / agg.gpuCount : 0.0);
       }
+      if (agg.at.empty()) {
+        continue;
+      }
+      auto average = [](double sum, int count) -> nlohmann::json {
+        return count > 0 ? nlohmann::json(sum / count) : nullptr;
+      };
+      nlohmann::json point = {{"at", agg.at},
+                              {"cpu", average(agg.cpu, agg.cpuCount)},
+                              {"memory", average(agg.memory, agg.memoryCount)},
+                              {"disk", average(agg.disk, agg.diskCount)},
+                              {"load1", average(agg.load1, agg.loadCount)},
+                              {"load5", average(agg.load5, agg.loadCount)},
+                              {"load15", average(agg.load15, agg.loadCount)}};
+      if (anyGpu) {
+        point["gpu"] = average(agg.gpu, agg.gpuCount);
+        point["gpuMemory"] = average(agg.gpuMemory, agg.gpuMemoryCount);
+      }
+      points.push_back(std::move(point));
     }
   }
   return {{"series", {{"cpu", cpuSeries}, {"memory", memorySeries}, {"gpu", gpuSeries}}},
+          {"points", points},
           {"latest", latest}};
 }
 

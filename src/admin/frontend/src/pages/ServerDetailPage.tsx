@@ -1,4 +1,5 @@
-import { Badge, Button, Form, Input, Modal, Tag, Tooltip, Typography, message } from 'antd';
+import { Line } from '@ant-design/charts';
+import { Badge, Button, Form, Input, Modal, Segmented, Tag, Tooltip, Typography, message } from 'antd';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import dayjs from 'dayjs';
@@ -79,24 +80,124 @@ function percent(used: number, total: number) {
   return Math.max(0, Math.min(100, (used / total) * 100));
 }
 
-function Sparkline({ points, color }: { points: number[]; color: string }) {
-  if (points.length < 2) {
-    return <div style={{ height: 72 }} />;
-  }
-  const width = 320;
-  const height = 72;
-  const step = width / (points.length - 1);
-  const path = points
-    .map((value, index) => {
-      const x = index * step;
-      const y = height - 4 - (Math.max(0, Math.min(100, value)) / 100) * (height - 8);
-      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+type RangeId = '15m' | '1h' | '6h' | '24h' | '7d';
+
+const RANGES: { id: RangeId; minutes: number }[] = [
+  { id: '15m', minutes: 15 },
+  { id: '1h', minutes: 60 },
+  { id: '6h', minutes: 360 },
+  { id: '24h', minutes: 24 * 60 },
+  { id: '7d', minutes: 7 * 24 * 60 },
+];
+
+type MetricPoint = {
+  at: string;
+  cpu: number | null;
+  memory: number | null;
+  disk: number | null;
+  load1: number | null;
+  load5: number | null;
+  load15: number | null;
+  gpu?: number | null;
+  gpuMemory?: number | null;
+};
+
+function isoUtc(value: dayjs.Dayjs) {
+  return value.toDate().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function tickLabel(iso: string, range: RangeId) {
+  const value = dayjs(iso);
+  return range === '15m' || range === '1h' ? value.format('HH:mm:ss') : value.format('DD/MM HH:mm');
+}
+
+function summarize(values: number[]) {
+  if (values.length === 0) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return { min, avg, max };
+}
+
+function formatMeasure(value: number, unit: string) {
+  const digits = Math.abs(value) >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)}${unit}`;
+}
+
+function MetricChart({
+  title,
+  note,
+  data,
+  yField,
+  color,
+  unit,
+  seriesField,
+}: {
+  title: string;
+  note?: string;
+  data: Record<string, string | number>[];
+  yField: string;
+  color: string | string[];
+  unit: string;
+  seriesField?: string;
+}) {
+  const { t } = useTranslation();
+  const values = data.map((row) => Number(row[yField])).filter((value) => Number.isFinite(value));
+  const summary = summarize(values);
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="72" aria-hidden="true">
-      <path d={path} fill="none" stroke={color} strokeWidth="2" />
-    </svg>
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <Typography.Text strong>{title}</Typography.Text>
+        {summary ? (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {t('metricSummary', {
+              min: formatMeasure(summary.min, unit),
+              avg: formatMeasure(summary.avg, unit),
+              max: formatMeasure(summary.max, unit),
+            })}
+          </Typography.Text>
+        ) : null}
+      </div>
+      {note ? (
+        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+          {note}
+        </Typography.Text>
+      ) : null}
+      {data.length < 2 ? (
+        <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
+      ) : (
+        <Line
+          height={240}
+          autoFit
+          data={data}
+          xField="label"
+          yField={yField}
+          seriesField={seriesField}
+          color={color}
+          smooth
+          animation={false}
+          appendPadding={[12, 12, 8, 8]}
+          slider={{ start: 0, end: 1 }}
+          xAxis={{ tickCount: 6 }}
+          yAxis={{
+            min: 0,
+            nice: true,
+            title: { text: unit || undefined },
+            label: {
+              formatter: (value: string) => formatMeasure(Number(value), unit),
+            },
+          }}
+          tooltip={{
+            title: (_title: string, datum: { tip?: string }) => datum?.tip || _title,
+            formatter: (datum: Record<string, string | number>) => ({
+              name: seriesField ? String(datum[seriesField]) : title,
+              value: formatMeasure(Number(datum[yField]), unit),
+            }),
+          }}
+          legend={seriesField ? { position: 'top-right' } : false}
+        />
+      )}
+    </div>
   );
 }
 
@@ -214,6 +315,9 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const { t, i18n } = useTranslation();
   const [server, setServer] = useState<Server>();
   const [metrics, setMetrics] = useState<ServerMetrics>({});
+  const [range, setRange] = useState<RangeId>('1h');
+  const [points, setPoints] = useState<MetricPoint[]>([]);
+  const [chartsLoading, setChartsLoading] = useState(false);
   const [rotating, setRotating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
@@ -241,11 +345,33 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
     };
   }, [id]);
 
-  const series = {
-    cpu: metrics.series?.cpu ?? [],
-    memory: metrics.series?.memory ?? [],
-    gpu: metrics.series?.gpu ?? [],
-  };
+  useEffect(() => {
+    if (!id) return undefined;
+    const windowMinutes = RANGES.find((item) => item.id === range)?.minutes ?? 60;
+    const to = dayjs();
+    const from = to.subtract(windowMinutes, 'minute');
+    let stopped = false;
+    setChartsLoading(true);
+    api
+      .get(`/servers/${id}/metrics`, {
+        params: { from: isoUtc(from), to: isoUtc(to) },
+        suppressErrorToast: true,
+      })
+      .then(({ data }) => {
+        if (stopped) return;
+        setPoints(Array.isArray(data.points) ? data.points : []);
+      })
+      .catch(() => {
+        if (!stopped) setPoints([]);
+      })
+      .finally(() => {
+        if (!stopped) setChartsLoading(false);
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [id, range]);
+
   const latest = metrics.latest ?? undefined;
   const latestCpu = latest?.cpuPercent;
   const memoryTotal = latest?.memoryLimitBytes || 0;
@@ -256,6 +382,27 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const gpuName = latest?.gpuName;
   const gpuCount = latest?.gpuCount || 0;
   const gpuLabel = gpuCount > 1 ? `${t('gpu')} (${gpuCount})` : t('gpu');
+  const chartRows = (field: 'cpu' | 'memory' | 'disk' | 'gpu' | 'gpuMemory') =>
+    points.flatMap((point) => {
+      const value = point[field];
+      if (value == null || Number.isNaN(value)) return [];
+      return [
+        {
+          label: tickLabel(point.at, range),
+          tip: dayjs(point.at).format('YYYY-MM-DD HH:mm:ss'),
+          value,
+        },
+      ];
+    });
+  const loadRows = points.flatMap((point) => {
+    const label = tickLabel(point.at, range);
+    const tip = dayjs(point.at).format('YYYY-MM-DD HH:mm:ss');
+    return (['load1', 'load5', 'load15'] as const).flatMap((key) => {
+      const value = point[key];
+      if (value == null || Number.isNaN(value)) return [];
+      return [{ label, tip, series: t(key), value }];
+    });
+  });
 
   const regenerateToken = async () => {
     setRotating(true);
@@ -387,7 +534,6 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             <Typography.Title level={3} style={{ margin: '8px 0' }}>
               {latestCpu === undefined ? '—' : `${latestCpu.toFixed(1)}%`}
             </Typography.Title>
-            <Sparkline points={series.cpu} color="#635BFF" />
           </div>
           <div style={cardStyle}>
             <Typography.Text type="secondary">{t('memory')}</Typography.Text>
@@ -397,7 +543,6 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             <Typography.Text style={{ color: '#425466' }}>
               {memoryTotal > 0 ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : '—'}
             </Typography.Text>
-            <Sparkline points={series.memory} color="#09825D" />
           </div>
           <div style={cardStyle}>
             <Typography.Text type="secondary">{t('load')}</Typography.Text>
@@ -431,11 +576,78 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
                   ? `${formatBytes(latest?.gpuMemoryUsedBytes || 0)} / ${formatBytes(latest?.gpuMemoryTotalBytes || 0)}`
                   : '—'}
               </Typography.Text>
-              <Sparkline points={series.gpu} color="#F5A623" />
             </div>
           )}
         </div>
       )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <Segmented
+          value={range}
+          onChange={(value) => setRange(value as RangeId)}
+          options={RANGES.map((item) => ({ value: item.id, label: t(`metricWindow_${item.id}`) }))}
+        />
+      </div>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+        {t('metricZoomHint')}
+      </Typography.Paragraph>
+      <div style={{ display: 'grid', gap: 16, marginBottom: 16, opacity: chartsLoading ? 0.6 : 1 }}>
+        <MetricChart
+          title={t('cpu')}
+          data={chartRows('cpu')}
+          yField="value"
+          color="#635BFF"
+          unit="%"
+        />
+        <MetricChart
+          title={t('memory')}
+          note={memoryTotal > 0 ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : undefined}
+          data={chartRows('memory')}
+          yField="value"
+          color="#09825D"
+          unit="%"
+        />
+        <MetricChart
+          title={t('load')}
+          data={loadRows}
+          yField="value"
+          color={['#635BFF', '#09825D', '#F5A623']}
+          unit=""
+          seriesField="series"
+        />
+        <MetricChart
+          title={t('disk')}
+          note={diskTotal > 0 ? `${formatBytes(diskUsed)} / ${formatBytes(diskTotal)}` : undefined}
+          data={chartRows('disk')}
+          yField="value"
+          color="#0A2540"
+          unit="%"
+        />
+        {hasGpu && (
+          <MetricChart
+            title={gpuLabel}
+            note={gpuName}
+            data={chartRows('gpu')}
+            yField="value"
+            color="#F5A623"
+            unit="%"
+          />
+        )}
+        {hasGpu && (
+          <MetricChart
+            title={t('gpuMemory')}
+            note={
+              (latest?.gpuMemoryTotalBytes || 0) > 0
+                ? `${formatBytes(latest?.gpuMemoryUsedBytes || 0)} / ${formatBytes(latest?.gpuMemoryTotalBytes || 0)}`
+                : undefined
+            }
+            data={chartRows('gpuMemory')}
+            yField="value"
+            color="#D97706"
+            unit="%"
+          />
+        )}
+      </div>
 
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         <div
