@@ -101,9 +101,15 @@ function isoUtc(value: dayjs.Dayjs) {
   return value.toDate().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-function tickLabel(iso: string, range: RangeId) {
-  const value = dayjs(iso);
+// Time axis label. The value is epoch milliseconds, as stored in chart rows.
+function formatTick(epochMs: number, range: RangeId) {
+  const value = dayjs(epochMs);
   return range === '15m' || range === '1h' ? value.format('HH:mm:ss') : value.format('DD/MM HH:mm');
+}
+
+// Full timestamp shown in the tooltip title.
+function formatTooltipTime(epochMs: number) {
+  return dayjs(epochMs).format('YYYY-MM-DD HH:mm:ss');
 }
 
 function summarize(values: number[]) {
@@ -114,11 +120,20 @@ function summarize(values: number[]) {
   return { min, avg, max };
 }
 
+// Tooltip and summary values always use two decimals.
 function formatMeasure(value: number, unit: string) {
-  const digits = Math.abs(value) >= 10 ? 1 : 2;
-  return `${value.toFixed(digits)}${unit}`;
+  return `${value.toFixed(2)}${unit}`;
 }
 
+// Axis labels drop trailing zeros but never show more than two decimals.
+function formatAxisValue(value: number, unit: string) {
+  return `${Number(value.toFixed(2))}${unit}`;
+}
+
+type ChartRow = Record<string, string | number>;
+
+// One chart per metric. Rows carry `time` (epoch ms), `tip` (full timestamp),
+// the value under `yField`, and `series` when a chart has several lines.
 function MetricChart({
   title,
   note,
@@ -127,16 +142,20 @@ function MetricChart({
   color,
   unit,
   seriesField,
+  range,
 }: {
   title: string;
   note?: string;
-  data: Record<string, string | number>[];
+  data: ChartRow[];
   yField: string;
   color: string | string[];
   unit: string;
   seriesField?: string;
+  range: RangeId;
 }) {
   const { t } = useTranslation();
+  const singleColor = typeof color === 'string' ? color : undefined;
+  const seriesColors = Array.isArray(color) ? color : undefined;
   const values = data.map((row) => Number(row[yField])).filter((value) => Number.isFinite(value));
   const summary = summarize(values);
   return (
@@ -161,35 +180,43 @@ function MetricChart({
       {data.length < 2 ? (
         <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
       ) : (
+        // G2 v5 options: scales, axes, slider and tooltip are configured per channel.
         <Line
           height={240}
           autoFit
           data={data}
-          xField="label"
+          xField="time"
           yField={yField}
           seriesField={seriesField}
-          color={color}
-          smooth
-          animation={false}
-          appendPadding={[12, 12, 8, 8]}
-          slider={{ start: 0, end: 1 }}
-          xAxis={{ tickCount: 6 }}
-          yAxis={{
-            min: 0,
-            nice: true,
-            title: { text: unit || undefined },
-            label: {
-              formatter: (value: string) => formatMeasure(Number(value), unit),
+          style={singleColor ? { stroke: singleColor, lineWidth: 2 } : undefined}
+          animate={false}
+          scale={{
+            x: { type: 'time' },
+            y: { domainMin: 0, nice: true },
+            ...(seriesColors ? { color: { range: seriesColors } } : {}),
+          }}
+          axis={{
+            x: {
+              tickCount: 6,
+              labelAutoHide: true,
+              labelFormatter: (value: number) => formatTick(Number(value), range),
+            },
+            y: {
+              title: unit || false,
+              labelFormatter: (value: number) => formatAxisValue(Number(value), unit),
             },
           }}
+          slider={{ x: {} }}
           tooltip={{
-            title: (_title: string, datum: { tip?: string }) => datum?.tip || _title,
-            formatter: (datum: Record<string, string | number>) => ({
-              name: seriesField ? String(datum[seriesField]) : title,
-              value: formatMeasure(Number(datum[yField]), unit),
-            }),
+            title: (datum: ChartRow) => formatTooltipTime(Number(datum.time)),
+            items: [
+              (datum: ChartRow) => ({
+                name: seriesField ? String(datum[seriesField]) : title,
+                value: formatMeasure(Number(datum[yField]), unit),
+              }),
+            ],
           }}
-          legend={seriesField ? { position: 'top-right' } : false}
+          legend={seriesField ? { color: { position: 'top' } } : false}
         />
       )}
     </div>
@@ -376,25 +403,18 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const gpuName = latest?.gpuName;
   const gpuCount = latest?.gpuCount || 0;
   const gpuLabel = gpuCount > 1 ? `${t('gpu')} (${gpuCount})` : t('gpu');
-  const chartRows = (field: 'cpu' | 'memory' | 'disk' | 'gpu' | 'gpuMemory') =>
+  const chartRows = (field: 'cpu' | 'memory' | 'disk' | 'gpu' | 'gpuMemory'): ChartRow[] =>
     points.flatMap((point) => {
       const value = point[field];
       if (value == null || Number.isNaN(value)) return [];
-      return [
-        {
-          label: tickLabel(point.at, range),
-          tip: dayjs(point.at).format('YYYY-MM-DD HH:mm:ss'),
-          value,
-        },
-      ];
+      return [{ time: dayjs(point.at).valueOf(), value }];
     });
-  const loadRows = points.flatMap((point) => {
-    const label = tickLabel(point.at, range);
-    const tip = dayjs(point.at).format('YYYY-MM-DD HH:mm:ss');
+  const loadRows: ChartRow[] = points.flatMap((point) => {
+    const time = dayjs(point.at).valueOf();
     return (['load1', 'load5', 'load15'] as const).flatMap((key) => {
       const value = point[key];
       if (value == null || Number.isNaN(value)) return [];
-      return [{ label, tip, series: t(key), value }];
+      return [{ time, series: t(key), value }];
     });
   });
 
@@ -525,6 +545,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           title={t('cpu')}
           data={chartRows('cpu')}
           yField="value"
+          range={range}
           color="#635BFF"
           unit="%"
         />
@@ -533,6 +554,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           note={memoryTotal > 0 ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : undefined}
           data={chartRows('memory')}
           yField="value"
+          range={range}
           color="#09825D"
           unit="%"
         />
@@ -540,6 +562,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           title={t('load')}
           data={loadRows}
           yField="value"
+          range={range}
           color={['#635BFF', '#09825D', '#F5A623']}
           unit=""
           seriesField="series"
@@ -549,6 +572,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           note={diskTotal > 0 ? `${formatBytes(diskUsed)} / ${formatBytes(diskTotal)}` : undefined}
           data={chartRows('disk')}
           yField="value"
+          range={range}
           color="#0A2540"
           unit="%"
         />
@@ -558,6 +582,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             note={gpuName}
             data={chartRows('gpu')}
             yField="value"
+            range={range}
             color="#F5A623"
             unit="%"
           />
@@ -572,6 +597,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             }
             data={chartRows('gpuMemory')}
             yField="value"
+            range={range}
             color="#D97706"
             unit="%"
           />
