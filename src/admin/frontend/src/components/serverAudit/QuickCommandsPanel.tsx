@@ -16,7 +16,10 @@ function isFinished(status: string) {
   return status === 'done' || status === 'skipped' || status === 'error';
 }
 
-export function QuickCommandsPanel({ serverId }: { serverId: string }) {
+// A window selected on a server chart. nonce changes on every selection, even the same range twice.
+export type AnalysisRequest = { audit: 'cpu' | 'ram'; from: number; to: number; nonce: number };
+
+export function QuickCommandsPanel({ serverId, request }: { serverId: string; request?: AnalysisRequest }) {
   const { t } = useTranslation();
   const [audit, setAudit] = useState<AuditKind>('disk');
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(() => [dayjs().subtract(1, 'hour'), dayjs()]);
@@ -36,6 +39,23 @@ export function QuickCommandsPanel({ serverId }: { serverId: string }) {
     },
     [],
   );
+
+  const runningRef = useRef(running);
+  runningRef.current = running;
+
+  useEffect(() => {
+    if (!request) return;
+    if (runningRef.current) {
+      message.info(t('audit.selectionWhileRunning'));
+      return;
+    }
+    // The picker works in minutes; widen to whole minutes so the selection stays inside.
+    setAudit(request.audit);
+    setRange([dayjs(request.from).startOf('minute'), dayjs(request.to).endOf('minute')]);
+    setJob(undefined);
+    setError(undefined);
+    message.success(t('audit.selectionApplied'));
+  }, [request, t]);
 
   const needsWindow = audit !== 'disk';
   const windowValid = !needsWindow || (range != null && range[1].isAfter(range[0]));

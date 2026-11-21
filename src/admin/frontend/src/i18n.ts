@@ -162,6 +162,7 @@ const resources = {
       metricWindow_24h: '24 hours',
       metricWindow_7d: '7 days',
       metricZoomHint: 'Drag the bar under a chart to zoom that metric. The vertical axis is the scale of the selected window.',
+      metricSelectWindowHint: 'Drag across the chart to pick a time window and analyze it in Quick Commands.',
       metricSummary: 'min {{min}} · avg {{avg}} · max {{max}}',
       resources: 'Resources',
       uptime: 'Uptime',
@@ -719,6 +720,7 @@ const resources = {
       metricWindow_7d: '7 días',
       metricZoomHint:
         'Arrastrá la barra de abajo de cada gráfico para hacer zoom. El eje vertical es la escala de la ventana elegida.',
+      metricSelectWindowHint: 'Arrastrá sobre el gráfico para marcar una ventana de tiempo y analizarla en Comandos rápidos.',
       metricSummary: 'mín {{min}} · prom {{avg}} · máx {{max}}',
       resources: 'Recursos',
       uptime: 'Uptime',

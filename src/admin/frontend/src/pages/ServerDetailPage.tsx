@@ -11,7 +11,7 @@ import { useParams } from 'react-router-dom';
 import api from '../api/client';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
-import { QuickCommandsPanel } from '../components/serverAudit/QuickCommandsPanel';
+import { type AnalysisRequest, QuickCommandsPanel } from '../components/serverAudit/QuickCommandsPanel';
 import { connectTerminal, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
 
@@ -144,6 +144,7 @@ function MetricChart({
   unit,
   seriesField,
   range,
+  onSelectWindow,
 }: {
   title: string;
   note?: string;
@@ -153,12 +154,17 @@ function MetricChart({
   unit: string;
   seriesField?: string;
   range: RangeId;
+  // Called with epoch milliseconds when the user drags across the plot.
+  onSelectWindow?: (from: number, to: number) => void;
 }) {
   const { t } = useTranslation();
   const singleColor = typeof color === 'string' ? color : undefined;
   const seriesColors = Array.isArray(color) ? color : undefined;
   const values = data.map((row) => Number(row[yField])).filter((value) => Number.isFinite(value));
   const summary = summarize(values);
+  // The chart instance keeps the first listener; the ref always points at the latest callback.
+  const selectRef = useRef(onSelectWindow);
+  selectRef.current = onSelectWindow;
   return (
     <div style={cardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -176,6 +182,11 @@ function MetricChart({
       {note ? (
         <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
           {note}
+        </Typography.Text>
+      ) : null}
+      {onSelectWindow && data.length >= 2 ? (
+        <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+          {t('metricSelectWindowHint')}
         </Typography.Text>
       ) : null}
       {data.length < 2 ? (
@@ -208,6 +219,24 @@ function MetricChart({
             },
           }}
           slider={{ x: {} }}
+          {...(onSelectWindow
+            ? {
+                interaction: {
+                  brushXHighlight: { series: true, maskFill: '#635BFF', maskFillOpacity: 0.12 },
+                },
+                onReady: (chart: { on: (event: string, handler: (event: unknown) => void) => void }) => {
+                  chart.on('brush:end', (event) => {
+                    const selection = (event as { data?: { selection?: unknown[][] } }).data?.selection;
+                    const domainX = selection?.[0];
+                    if (!domainX || domainX.length < 2) return;
+                    const from = dayjs(domainX[0] as Date | number).valueOf();
+                    const to = dayjs(domainX[domainX.length - 1] as Date | number).valueOf();
+                    if (!Number.isFinite(from) || !Number.isFinite(to) || to - from < 60_000) return;
+                    selectRef.current?.(Math.min(from, to), Math.max(from, to));
+                  });
+                },
+              }
+            : {})}
           tooltip={{
             title: (datum: ChartRow) => formatTooltipTime(Number(datum.time)),
             items: [
@@ -362,6 +391,14 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const [iconOpen, setIconOpen] = useState(false);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
   const [consoleTab, setConsoleTab] = useState<'console' | 'quickCommands'>('console');
+  const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest>();
+  const consoleCardRef = useRef<HTMLDivElement>(null);
+
+  const requestAnalysis = (audit: 'cpu' | 'ram', from: number, to: number) => {
+    setAnalysisRequest({ audit, from, to, nonce: Date.now() });
+    setConsoleTab('quickCommands');
+    consoleCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const [editForm] = Form.useForm();
 
   useEffect(() => {
@@ -566,6 +603,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           range={range}
           color="#635BFF"
           unit="%"
+          onSelectWindow={server.status === 'online' ? (from, to) => requestAnalysis('cpu', from, to) : undefined}
         />
         <MetricChart
           title={t('memory')}
@@ -575,6 +613,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           range={range}
           color="#09825D"
           unit="%"
+          onSelectWindow={server.status === 'online' ? (from, to) => requestAnalysis('ram', from, to) : undefined}
         />
         <MetricChart
           title={t('load')}
@@ -622,7 +661,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
         )}
       </div>
 
-      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+      <div ref={consoleCardRef} style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         <Tabs
           activeKey={consoleTab}
           onChange={(key) => setConsoleTab(key as 'console' | 'quickCommands')}
@@ -648,7 +687,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
               <HostTerminal key={id} serverId={id} active={consoleTab === 'console'} onModeChange={setTerminalMode} />
             </div>
             <div style={{ display: consoleTab === 'quickCommands' ? 'block' : 'none' }}>
-              <QuickCommandsPanel key={id} serverId={id} />
+              <QuickCommandsPanel key={id} serverId={id} request={analysisRequest} />
             </div>
           </>
         ) : (
