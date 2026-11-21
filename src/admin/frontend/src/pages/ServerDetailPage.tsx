@@ -75,11 +75,6 @@ function formatBytes(value: number) {
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-function percent(used: number, total: number) {
-  if (total <= 0) return 0;
-  return Math.max(0, Math.min(100, (used / total) * 100));
-}
-
 type RangeId = '15m' | '1h' | '6h' | '24h' | '7d';
 
 const RANGES: { id: RangeId; minutes: number }[] = [
@@ -373,7 +368,6 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   }, [id, range]);
 
   const latest = metrics.latest ?? undefined;
-  const latestCpu = latest?.cpuPercent;
   const memoryTotal = latest?.memoryLimitBytes || 0;
   const memoryUsed = latest?.memoryUsedBytes || 0;
   const diskTotal = latest?.diskTotalBytes || 0;
@@ -515,71 +509,6 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           </Button>
         </div>
       </div>
-
-      {!latest ? (
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
-          <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
-        </div>
-      ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div style={cardStyle}>
-            <Typography.Text type="secondary">{t('cpu')}</Typography.Text>
-            <Typography.Title level={3} style={{ margin: '8px 0' }}>
-              {latestCpu === undefined ? '—' : `${latestCpu.toFixed(1)}%`}
-            </Typography.Title>
-          </div>
-          <div style={cardStyle}>
-            <Typography.Text type="secondary">{t('memory')}</Typography.Text>
-            <Typography.Title level={3} style={{ margin: '8px 0' }}>
-              {memoryTotal > 0 ? `${percent(memoryUsed, memoryTotal).toFixed(1)}%` : '—'}
-            </Typography.Title>
-            <Typography.Text style={{ color: '#425466' }}>
-              {memoryTotal > 0 ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : '—'}
-            </Typography.Text>
-          </div>
-          <div style={cardStyle}>
-            <Typography.Text type="secondary">{t('load')}</Typography.Text>
-            <Typography.Title level={3} style={{ margin: '8px 0' }}>
-              {(latest?.load?.['1'] ?? 0).toFixed(2)}
-            </Typography.Title>
-            <Typography.Text style={{ color: '#425466' }}>
-              {(latest?.load?.['1'] ?? 0).toFixed(2)} · {(latest?.load?.['5'] ?? 0).toFixed(2)} ·{' '}
-              {(latest?.load?.['15'] ?? 0).toFixed(2)}
-            </Typography.Text>
-          </div>
-          <div style={cardStyle}>
-            <Typography.Text type="secondary">{t('disk')}</Typography.Text>
-            <Typography.Title level={3} style={{ margin: '8px 0' }}>
-              {diskTotal > 0 ? `${percent(diskUsed, diskTotal).toFixed(1)}%` : '—'}
-            </Typography.Title>
-            <Typography.Text style={{ color: '#425466' }}>
-              {diskTotal > 0 ? `${formatBytes(diskUsed)} / ${formatBytes(diskTotal)}` : '—'}
-            </Typography.Text>
-          </div>
-          {hasGpu && (
-            <div style={cardStyle}>
-              <Tooltip title={gpuName}>
-                <Typography.Text type="secondary">{gpuLabel}</Typography.Text>
-              </Tooltip>
-              <Typography.Title level={3} style={{ margin: '8px 0' }}>
-                {`${(latest?.gpuPercent || 0).toFixed(1)}%`}
-              </Typography.Title>
-              <Typography.Text style={{ color: '#425466' }}>
-                {(latest?.gpuMemoryTotalBytes || 0) > 0
-                  ? `${formatBytes(latest?.gpuMemoryUsedBytes || 0)} / ${formatBytes(latest?.gpuMemoryTotalBytes || 0)}`
-                  : '—'}
-              </Typography.Text>
-            </div>
-          )}
-        </div>
-      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <Segmented
