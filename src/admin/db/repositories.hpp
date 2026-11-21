@@ -156,6 +156,28 @@ public:
   std::vector<MetricRow> listReplicaMetrics(int64_t replicaId, const std::string& from,
                                             const std::string& to);
   int64_t deleteMetricsOlderThan(const std::string& cutoffIso);
+  // Every Nth host sample only, for long windows where a trend is enough.
+  std::vector<MetricRow> listServerMetricsSampled(int64_t serverId, const std::string& from,
+                                                  const std::string& to, int everyNth);
+
+  // Process snapshots (per-process CPU and memory history)
+  void insertProcessSnapshot(int64_t serverId, const std::string& payloadJson,
+                             const std::string& collectedAt);
+  // Rows reuse MetricRow: replicaId stays empty.
+  std::vector<MetricRow> listProcessSnapshots(int64_t serverId, const std::string& from,
+                                              const std::string& to);
+  int64_t deleteProcessSnapshotsOlderThan(const std::string& cutoffIso);
+
+  // Deployments and replica incidents of applications running on a server, oldest first.
+  struct ServerEvent {
+    std::string at;
+    std::string kind;  // deployment | incident
+    std::string detail;
+    int64_t applicationId = 0;
+    std::string applicationName;
+  };
+  std::vector<ServerEvent> listServerEvents(int64_t serverId, const std::string& from,
+                                            const std::string& to);
 
   // User activity (audit trail)
   int64_t recordUserActivity(const UserActivity& activity);

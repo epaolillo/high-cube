@@ -147,6 +147,7 @@ void MetricsRetentionService::runOnce() {
   std::ostringstream oss;
   oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
   ctx_.repos->deleteMetricsOlderThan(oss.str());
+  ctx_.repos->deleteProcessSnapshotsOlderThan(oss.str());
   // Keep crash traceability under the same retention window as metrics.
   ctx_.repos->deleteIncidentsOlderThan(oss.str());
   // The audit trail and presence history share the same retention window.

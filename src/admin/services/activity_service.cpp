@@ -74,6 +74,8 @@ DerivedActivity deriveActivity(const std::string& method, const std::string& rou
       {"POST /api/servers/:id/agent-update", "server.updateAgent|server"},
       {"DELETE /api/servers/:id", "server.delete|server"},
       {"POST /api/servers/:id/terminal/sessions", "server.terminalOpen|server"},
+      {"POST /api/servers/:id/quick-commands", "server.audit|server"},
+      {"POST /api/servers/:id/quick-actions", "server.quickAction|server"},
       {"DELETE /api/servers/:id/terminal/sessions/:streamId", "server.terminalClose|server"},
       {"POST /api/github-apps/manifest", "github.createManifest|github"},
       {"POST /api/github-apps/:id/manifest/complete", "github.completeManifest|github"},

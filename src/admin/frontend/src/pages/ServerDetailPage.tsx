@@ -1,5 +1,5 @@
 import { Line } from '@ant-design/charts';
-import { Badge, Button, Form, Input, Modal, Segmented, Tag, Tooltip, Typography, message } from 'antd';
+import { Badge, Button, Form, Input, Modal, Segmented, Tabs, Tag, Tooltip, Typography, message } from 'antd';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import dayjs from 'dayjs';
@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom';
 import api from '../api/client';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
+import { QuickCommandsPanel } from '../components/serverAudit/QuickCommandsPanel';
 import { connectTerminal, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
 
@@ -225,13 +226,23 @@ function MetricChart({
 
 function HostTerminal({
   serverId,
+  active,
   onModeChange,
 }: {
   serverId: string;
+  active: boolean;
   onModeChange: (mode: TerminalMode | undefined) => void;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef(active);
+  const refitRef = useRef<() => void>();
+
+  useEffect(() => {
+    activeRef.current = active;
+    // A hidden tab has no size; fit again once the console is visible.
+    if (active) refitRef.current?.();
+  }, [active]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -261,8 +272,13 @@ function HostTerminal({
       }
     };
     const fitTerminal = () => {
+      if (!activeRef.current) return;
       place();
       fit.fit();
+    };
+    refitRef.current = () => {
+      fitTerminal();
+      term.focus();
     };
     fitTerminal();
 
@@ -312,6 +328,7 @@ function HostTerminal({
 
     return () => {
       disposed = true;
+      refitRef.current = undefined;
       connecting.abort();
       transport?.close();
       onModeChange(undefined);
@@ -344,6 +361,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const [editing, setEditing] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
+  const [consoleTab, setConsoleTab] = useState<'console' | 'quickCommands'>('console');
   const [editForm] = Form.useForm();
 
   useEffect(() => {
@@ -605,27 +623,34 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
       </div>
 
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-        <div
-          style={{
-            padding: '16px 24px',
-            borderBottom: '1px solid #E3E8EE',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <Typography.Text strong>{t('hostTerminal')}</Typography.Text>
-          {terminalMode === 'polling' && (
-            <Tooltip title={t('terminalPollingHint')}>
-              <Tag color="gold" style={{ marginInlineEnd: 0 }}>
-                {t('terminalPolling')}
-              </Tag>
-            </Tooltip>
-          )}
-        </div>
+        <Tabs
+          activeKey={consoleTab}
+          onChange={(key) => setConsoleTab(key as 'console' | 'quickCommands')}
+          tabBarStyle={{ margin: 0, padding: '0 24px' }}
+          items={[
+            { key: 'console', label: t('hostConsoleTab') },
+            { key: 'quickCommands', label: t('quickCommandsTab') },
+          ]}
+          tabBarExtraContent={
+            consoleTab === 'console' && terminalMode === 'polling' ? (
+              <Tooltip title={t('terminalPollingHint')}>
+                <Tag color="gold" style={{ marginInlineEnd: 0 }}>
+                  {t('terminalPolling')}
+                </Tag>
+              </Tooltip>
+            ) : null
+          }
+        />
         {server.status === 'online' ? (
-          <HostTerminal key={id} serverId={id} onModeChange={setTerminalMode} />
+          <>
+            {/* Both panes stay mounted so an open shell and a running analysis survive tab switches. */}
+            <div style={{ display: consoleTab === 'console' ? 'block' : 'none' }}>
+              <HostTerminal key={id} serverId={id} active={consoleTab === 'console'} onModeChange={setTerminalMode} />
+            </div>
+            <div style={{ display: consoleTab === 'quickCommands' ? 'block' : 'none' }}>
+              <QuickCommandsPanel key={id} serverId={id} />
+            </div>
+          </>
         ) : (
           <div style={{ padding: 24 }}>
             <Typography.Text type="secondary">{t('waitingForAgent')}</Typography.Text>

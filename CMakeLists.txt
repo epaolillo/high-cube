@@ -63,6 +63,7 @@ set(ADMIN_SOURCES
   src/admin/services/state_service.cpp
   src/admin/services/application_service.cpp
   src/admin/services/db_admin_service.cpp
+  src/admin/services/audit_service.cpp
   src/admin/services/deployment_service.cpp
   src/admin/services/placement_service.cpp
   src/admin/services/metrics_retention_service.cpp
@@ -113,6 +114,12 @@ set(AGENT_SOURCES
   src/agent/runtime/git_checkout.cpp
   src/agent/metrics/host_metrics.cpp
   src/agent/metrics/container_metrics.cpp
+  src/agent/metrics/process_snapshot.cpp
+  src/agent/audit/command_runner.cpp
+  src/agent/audit/audit_engine.cpp
+  src/agent/audit/disk_checks.cpp
+  src/agent/audit/resource_checks.cpp
+  src/agent/audit/actions.cpp
   src/agent/logs/log_streamer.cpp
   src/agent/terminal/terminal_session.cpp
   src/agent/bootstrap/bootstrap.cpp

@@ -26,6 +26,7 @@ enum MessageKind {
   RENAME_VOLUME = 12;
   CHECK_HOST_PORT = 13;
   DB_MANAGE = 14;
+  QUICK_COMMAND = 15;
 
   // Agent -> Admin
   REGISTER = 100;
@@ -39,6 +40,9 @@ enum MessageKind {
   DEPLOYMENT_LOG = 108;
   HOST_PORT_RESULT = 109;
   DB_MANAGE_RESULT = 110;
+  QUICK_COMMAND_PROGRESS = 111;
+  PROCESS_SNAPSHOT = 112;
+  QUICK_COMMAND_RESULT = 113;
 }
 
 message VolumeSpec {
@@ -230,4 +234,33 @@ message DbManageResult {
   bool ok = 2;
   string error = 3;
   string payload_json = 4;
+}
+
+// Admin -> Agent: run an allowlisted audit or remediation action on the host.
+// name is never a shell command: the agent maps it to built-in checks or actions.
+message QuickCommand {
+  string correlation_id = 1;
+  string kind = 2; // audit | action
+  string name = 3; // audit: disk | cpu | ram. action: one of the allowlisted action ids
+  string payload_json = 4;
+}
+
+// Agent -> Admin: one check result of a running audit, sent as soon as it changes.
+message QuickCommandProgress {
+  string correlation_id = 1;
+  string check_json = 2;
+}
+
+// Agent -> Admin: the audit or action finished.
+message QuickCommandResult {
+  string correlation_id = 1;
+  bool ok = 2;
+  string error = 3;
+  string payload_json = 4;
+}
+
+// Agent -> Admin: top processes by CPU and memory plus the CPU time breakdown.
+message ProcessSnapshot {
+  string payload_json = 1;
+  int64 collected_at_unix_ms = 2;
 }

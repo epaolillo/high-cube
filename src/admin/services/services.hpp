@@ -300,6 +300,21 @@ private:
   GithubApp requireAccess(int64_t id, const User& actor) const;
 };
 
+// Quick Commands on a server: deep audits (disk, cpu, ram) built from agent checks
+// plus admin-side history, and allowlisted remediation actions.
+class AuditService {
+public:
+  explicit AuditService(AppContext& ctx);
+  // body: {audit: disk|cpu|ram, from?, to? (epoch ms), only?: checkId}
+  nlohmann::json start(int64_t serverId, const nlohmann::json& body);
+  // body: {actionId, target?}
+  nlohmann::json startAction(int64_t serverId, const nlohmann::json& body);
+  nlohmann::json poll(int64_t serverId, const std::string& jobId);
+
+private:
+  AppContext& ctx_;
+};
+
 class MetricsRetentionService {
 public:
   explicit MetricsRetentionService(AppContext& ctx);

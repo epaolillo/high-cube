@@ -61,6 +61,16 @@ void registerHandlers(Router& router, AppContext& ctx) {
     if (const auto it = c.params.find("id"); it != c.params.end()) {
       activity.targetId = it->second;
     }
+    if (routePattern == "/api/servers/:id/quick-actions" || routePattern == "/api/servers/:id/quick-commands") {
+      const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(), nullptr, false);
+      if (body.is_object()) {
+        nlohmann::json detail = nlohmann::json::object();
+        for (const char* key : {"actionId", "target", "audit", "from", "to", "only"}) {
+          if (body.contains(key)) detail[key] = body[key];
+        }
+        activity.detail = detail.dump();
+      }
+    }
     const auto realIp = std::string(c.request["X-Real-IP"]);
     const auto forwarded = std::string(c.request["X-Forwarded-For"]);
     activity.ip = !realIp.empty() ? realIp : forwarded;
@@ -268,6 +278,22 @@ void registerHandlers(Router& router, AppContext& ctx) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return jsonResponse(http::status::ok, ServerService(ctx).metrics(std::stoll(c.params["id"]),
                                                                      c.query["from"], c.query["to"]));
+  });
+  router.add("POST", "/api/servers/:id/quick-commands", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(), nullptr, false);
+    if (!body.is_object()) return errorResponse(http::status::bad_request, "Invalid JSON");
+    return jsonResponse(http::status::accepted, AuditService(ctx).start(std::stoll(c.params["id"]), body));
+  });
+  router.add("GET", "/api/servers/:id/quick-commands/:jobId", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, AuditService(ctx).poll(std::stoll(c.params["id"]), c.params["jobId"]));
+  });
+  router.add("POST", "/api/servers/:id/quick-actions", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(), nullptr, false);
+    if (!body.is_object()) return errorResponse(http::status::bad_request, "Invalid JSON");
+    return jsonResponse(http::status::accepted, AuditService(ctx).startAction(std::stoll(c.params["id"]), body));
   });
   router.add("POST", "/api/servers/:id/terminal/sessions", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");

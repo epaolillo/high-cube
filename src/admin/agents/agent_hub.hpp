@@ -111,6 +111,19 @@ public:
   bool tryWaitDbManage(const http::request<http::string_body>& request,
                        const std::function<void(http::response<http::string_body>)>& reply);
 
+  // Quick Commands: an allowlisted audit or action that streams progress items.
+  struct QuickCommandPoll {
+    std::string status;  // pending | ok | error | timeout | unknown
+    std::string error;
+    std::vector<std::string> progress;  // items after `since`
+    std::size_t progressTotal = 0;
+    std::string resultJson;
+  };
+  std::string startQuickCommand(int64_t serverId, const std::string& kind, const std::string& name,
+                                const std::string& payloadJson);
+  QuickCommandPoll pollQuickCommand(const std::string& requestId, int64_t serverId, std::size_t since);
+  net::io_context& ioContext() { return ioc_; }
+
 private:
   void onMessage(AgentSession::Pointer session, const ::highcube::Envelope& envelope);
   void handleRegister(AgentSession::Pointer session, const ::highcube::Register& msg);
@@ -120,6 +133,9 @@ private:
   void handleContainerMetrics(AgentSession::Pointer session, const ::highcube::ContainerMetrics& msg);
   void handleHostPortResult(const ::highcube::HostPortResult& msg);
   void handleDbManageResult(const ::highcube::DbManageResult& msg);
+  void handleQuickCommandProgress(AgentSession::Pointer session, const ::highcube::QuickCommandProgress& msg);
+  void handleQuickCommandResult(AgentSession::Pointer session, const ::highcube::QuickCommandResult& msg);
+  void handleProcessSnapshot(AgentSession::Pointer session, const ::highcube::ProcessSnapshot& msg);
   void applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson);
   void finishDbWaiter(const std::string& requestId, std::uint64_t waiterId);
   void handleDeploymentLog(const ::highcube::DeploymentLog& msg);
@@ -180,6 +196,18 @@ private:
   };
   std::unordered_map<std::string, DbWaiter> dbWaiters_;
   std::atomic<std::uint64_t> dbWaiterSeq_{0};
+
+  struct QuickCommandEntry {
+    int64_t serverId = 0;
+    bool done = false;
+    bool ok = false;
+    std::string error;
+    std::vector<std::string> progress;
+    std::string resultJson;
+    std::chrono::steady_clock::time_point createdAt;
+  };
+  std::unordered_map<std::string, QuickCommandEntry> quickCommands_;
+  std::atomic<std::uint64_t> quickCommandSeq_{0};
 
   std::string agentBinaryPath_;
   struct AgentBinaryTicket {

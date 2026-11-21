@@ -1842,6 +1842,111 @@ int64_t Repositories::deleteMetricsOlderThan(const std::string& cutoffIso) {
   return st.exec();
 }
 
+std::vector<MetricRow> Repositories::listServerMetricsSampled(int64_t serverId, const std::string& from,
+                                                              const std::string& to, int everyNth) {
+  std::vector<MetricRow> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,server_id,payload_json,collected_at FROM metrics "
+                       "WHERE server_id=? AND replica_id IS NULL AND collected_at>=? AND collected_at<=? "
+                       "AND (id % ?)=0 ORDER BY collected_at ASC");
+  st.bind(1, serverId);
+  st.bind(2, from);
+  st.bind(3, to);
+  st.bind(4, std::max(1, everyNth));
+  while (st.executeStep()) {
+    MetricRow row;
+    row.id = st.getColumn(0).getInt64();
+    row.serverId = st.getColumn(1).getInt64();
+    row.payloadJson = st.getColumn(2).getString();
+    row.collectedAt = st.getColumn(3).getString();
+    rows.push_back(row);
+  }
+  return rows;
+}
+
+void Repositories::insertProcessSnapshot(int64_t serverId, const std::string& payloadJson,
+                                         const std::string& collectedAt) {
+  SQLite::Statement st(database_.db(),
+                       "INSERT INTO process_snapshots (server_id,payload_json,collected_at) VALUES (?,?,?)");
+  st.bind(1, serverId);
+  st.bind(2, payloadJson);
+  st.bind(3, collectedAt);
+  st.exec();
+}
+
+std::vector<MetricRow> Repositories::listProcessSnapshots(int64_t serverId, const std::string& from,
+                                                          const std::string& to) {
+  std::vector<MetricRow> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,server_id,payload_json,collected_at FROM process_snapshots "
+                       "WHERE server_id=? AND collected_at>=? AND collected_at<=? ORDER BY collected_at ASC");
+  st.bind(1, serverId);
+  st.bind(2, from);
+  st.bind(3, to);
+  while (st.executeStep()) {
+    MetricRow row;
+    row.id = st.getColumn(0).getInt64();
+    row.serverId = st.getColumn(1).getInt64();
+    row.payloadJson = st.getColumn(2).getString();
+    row.collectedAt = st.getColumn(3).getString();
+    rows.push_back(row);
+  }
+  return rows;
+}
+
+int64_t Repositories::deleteProcessSnapshotsOlderThan(const std::string& cutoffIso) {
+  SQLite::Statement st(database_.db(), "DELETE FROM process_snapshots WHERE collected_at < ?");
+  st.bind(1, cutoffIso);
+  return st.exec();
+}
+
+std::vector<Repositories::ServerEvent> Repositories::listServerEvents(int64_t serverId, const std::string& from,
+                                                                      const std::string& to) {
+  std::vector<ServerEvent> events;
+  {
+    SQLite::Statement st(database_.db(),
+                         "SELECT d.created_at,d.status,d.git_sha,a.id,a.name FROM deployments d "
+                         "JOIN applications a ON a.id=d.application_id "
+                         "WHERE d.created_at>=? AND d.created_at<=? "
+                         "AND d.application_id IN (SELECT application_id FROM replicas WHERE server_id=?) "
+                         "ORDER BY d.created_at ASC LIMIT 200");
+    st.bind(1, from);
+    st.bind(2, to);
+    st.bind(3, serverId);
+    while (st.executeStep()) {
+      ServerEvent event;
+      event.at = st.getColumn(0).getString();
+      event.kind = "deployment";
+      const auto sha = st.getColumn(2).getString();
+      event.detail = st.getColumn(1).getString() + (sha.empty() ? "" : " " + sha.substr(0, 7));
+      event.applicationId = st.getColumn(3).getInt64();
+      event.applicationName = st.getColumn(4).getString();
+      events.push_back(event);
+    }
+  }
+  {
+    SQLite::Statement st(database_.db(),
+                         "SELECT i.created_at,i.kind,i.detail,a.id,a.name FROM replica_incidents i "
+                         "JOIN applications a ON a.id=i.application_id "
+                         "WHERE i.server_id=? AND i.created_at>=? AND i.created_at<=? "
+                         "ORDER BY i.created_at ASC LIMIT 200");
+    st.bind(1, serverId);
+    st.bind(2, from);
+    st.bind(3, to);
+    while (st.executeStep()) {
+      ServerEvent event;
+      event.at = st.getColumn(0).getString();
+      event.kind = "incident";
+      event.detail = st.getColumn(1).getString() + ": " + st.getColumn(2).getString();
+      event.applicationId = st.getColumn(3).getInt64();
+      event.applicationName = st.getColumn(4).getString();
+      events.push_back(event);
+    }
+  }
+  std::sort(events.begin(), events.end(), [](const ServerEvent& a, const ServerEvent& b) { return a.at < b.at; });
+  return events;
+}
+
 Page<GithubApp> Repositories::listGithubApps(const ListQuery& query) {
   Page<GithubApp> page;
   const int pageSize = clampPageSize(query.pageSize);

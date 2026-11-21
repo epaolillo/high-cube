@@ -300,6 +300,27 @@ void AgentHub::onMessage(AgentSession::Pointer session, const ::highcube::Envelo
       }
       break;
     }
+    case ::highcube::QUICK_COMMAND_PROGRESS: {
+      ::highcube::QuickCommandProgress msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleQuickCommandProgress(session, msg);
+      }
+      break;
+    }
+    case ::highcube::QUICK_COMMAND_RESULT: {
+      ::highcube::QuickCommandResult msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleQuickCommandResult(session, msg);
+      }
+      break;
+    }
+    case ::highcube::PROCESS_SNAPSHOT: {
+      ::highcube::ProcessSnapshot msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleProcessSnapshot(session, msg);
+      }
+      break;
+    }
     case ::highcube::DEPLOYMENT_LOG: {
       ::highcube::DeploymentLog msg;
       if (msg.ParseFromString(envelope.payload())) {
@@ -455,6 +476,99 @@ void AgentHub::handleDbManageResult(const ::highcube::DbManageResult& msg) {
     it->second.resultJson = msg.payload_json().empty() ? "{}" : msg.payload_json();
   }
   finishDbWaiter(msg.correlation_id(), 0);
+}
+
+void AgentHub::handleProcessSnapshot(AgentSession::Pointer session, const ::highcube::ProcessSnapshot& msg) {
+  if (session->serverId() == 0) {
+    return;
+  }
+  repos_.insertProcessSnapshot(session->serverId(), msg.payload_json(), nowIso());
+}
+
+void AgentHub::handleQuickCommandProgress(AgentSession::Pointer session,
+                                          const ::highcube::QuickCommandProgress& msg) {
+  std::lock_guard lock(mutex_);
+  auto it = quickCommands_.find(msg.correlation_id());
+  if (it == quickCommands_.end() || it->second.serverId != session->serverId() || it->second.done) {
+    return;
+  }
+  it->second.progress.push_back(msg.check_json());
+}
+
+void AgentHub::handleQuickCommandResult(AgentSession::Pointer session, const ::highcube::QuickCommandResult& msg) {
+  std::lock_guard lock(mutex_);
+  auto it = quickCommands_.find(msg.correlation_id());
+  if (it == quickCommands_.end() || it->second.serverId != session->serverId()) {
+    return;
+  }
+  it->second.done = true;
+  it->second.ok = msg.ok();
+  it->second.error = msg.error();
+  it->second.resultJson = msg.payload_json().empty() ? "{}" : msg.payload_json();
+}
+
+std::string AgentHub::startQuickCommand(int64_t serverId, const std::string& kind, const std::string& name,
+                                        const std::string& payloadJson) {
+  AgentSession::Pointer session;
+  std::string requestId;
+  {
+    std::lock_guard lock(mutex_);
+    auto it = sessionsByServer_.find(serverId);
+    if (it == sessionsByServer_.end()) {
+      throw std::runtime_error("The server agent is offline");
+    }
+    session = it->second;
+    const auto now = std::chrono::steady_clock::now();
+    for (auto entry = quickCommands_.begin(); entry != quickCommands_.end();) {
+      if (now - entry->second.createdAt > std::chrono::minutes(40)) {
+        entry = quickCommands_.erase(entry);
+      } else {
+        ++entry;
+      }
+    }
+    requestId = "qc-" + std::to_string(++quickCommandSeq_) + "-" + makeStreamId();
+    QuickCommandEntry row;
+    row.serverId = serverId;
+    row.createdAt = now;
+    quickCommands_[requestId] = std::move(row);
+  }
+  ::highcube::QuickCommand order;
+  order.set_correlation_id(requestId);
+  order.set_kind(kind);
+  order.set_name(name);
+  order.set_payload_json(payloadJson);
+  session->send(makeEnvelope(::highcube::QUICK_COMMAND, order));
+  return requestId;
+}
+
+AgentHub::QuickCommandPoll AgentHub::pollQuickCommand(const std::string& requestId, int64_t serverId,
+                                                      std::size_t since) {
+  QuickCommandPoll poll;
+  std::lock_guard lock(mutex_);
+  auto it = quickCommands_.find(requestId);
+  if (it == quickCommands_.end() || it->second.serverId != serverId) {
+    poll.status = "unknown";
+    return poll;
+  }
+  auto& entry = it->second;
+  // A full disk audit walks every filesystem; package removal can take a while too.
+  if (!entry.done && std::chrono::steady_clock::now() - entry.createdAt > std::chrono::minutes(20)) {
+    entry.done = true;
+    entry.ok = false;
+    entry.error = "The agent did not finish in time";
+  }
+  poll.progressTotal = entry.progress.size();
+  for (std::size_t i = since; i < entry.progress.size(); ++i) {
+    poll.progress.push_back(entry.progress[i]);
+  }
+  if (!entry.done) {
+    poll.status = "pending";
+    return poll;
+  }
+  poll.status = entry.ok ? "ok" : (entry.error == "The agent did not finish in time" ? "timeout" : "error");
+  poll.error = entry.error;
+  poll.resultJson = entry.resultJson;
+  return poll;
 }
 
 void AgentHub::applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson) {
@@ -840,6 +954,13 @@ void AgentHub::onSessionClosed(AgentSession::Pointer session) {
         sessionsByServer_.erase(it);
         containerRounds_.erase(session->serverId());
         wasActive = true;
+        for (auto& [requestId, entry] : quickCommands_) {
+          if (entry.serverId == session->serverId() && !entry.done) {
+            entry.done = true;
+            entry.ok = false;
+            entry.error = "The agent disconnected";
+          }
+        }
       }
     }
     for (auto it = terminals_.begin(); it != terminals_.end();) {

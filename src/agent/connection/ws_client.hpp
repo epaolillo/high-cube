@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/agent_config.hpp"
+#include "metrics/process_snapshot.hpp"
 #include "runtime/docker_runtime.hpp"
 #include "terminal/terminal_session.hpp"
 
@@ -46,6 +47,8 @@ private:
   void startMetrics();
   void startContainerMetrics();
   void reportContainerMetrics();
+  void startProcessSnapshots();
+  void runQuickCommand(const ::highcube::QuickCommand& order);
   void doWrite();
   void closeTerminals();
   void fail(beast::error_code ec, const char* what);
@@ -67,12 +70,17 @@ private:
   net::steady_timer heartbeatTimer_;
   net::steady_timer metricsTimer_;
   net::steady_timer containerMetricsTimer_;
+  net::steady_timer processSnapshotTimer_;
   std::deque<std::shared_ptr<std::string>> outgoing_;
   std::unordered_map<std::string, std::shared_ptr<TerminalSession>> terminals_;
   bool connected_ = false;
   bool writing_ = false;
   bool reconnectPending_ = false;
   std::atomic<bool> containerReportRunning_{false};
+  std::atomic<bool> processSnapshotRunning_{false};
+  std::atomic<int> quickCommandsRunning_{0};
+  // Only touched by the snapshot worker thread; processSnapshotRunning_ serializes it.
+  ProcessSampler processSampler_;
 };
 
 }  // namespace highcube::agent

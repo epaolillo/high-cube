@@ -1,5 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { auditEn, auditEs } from './i18nAudit';
 
 const resources = {
   en: {
@@ -166,6 +167,9 @@ const resources = {
       uptime: 'Uptime',
       server: 'Server',
       hostTerminal: 'Host terminal',
+      hostConsoleTab: 'Console',
+      quickCommandsTab: 'Quick Commands',
+      audit: auditEn,
       waitingForAgent: 'Waiting for the agent to connect.',
       noMetricsYet: 'No metrics yet. They appear once the agent is connected.',
       terminalClosed: 'terminal closed',
@@ -478,6 +482,8 @@ const resources = {
       activityAction_server_delete: 'Deleted a server',
       activityAction_server_terminalOpen: 'Opened a host terminal',
       activityAction_server_terminalClose: 'Closed a host terminal',
+      activityAction_server_audit: 'Ran a server audit',
+      activityAction_server_quickAction: 'Applied a server cleanup action',
       activityAction_github_createManifest: 'Started a GitHub App registration',
       activityAction_github_completeManifest: 'Completed a GitHub App registration',
       activityAction_github_setInstallation: 'Saved a GitHub installation',
@@ -718,6 +724,9 @@ const resources = {
       uptime: 'Uptime',
       server: 'Servidor',
       hostTerminal: 'Terminal del host',
+      hostConsoleTab: 'Consola',
+      quickCommandsTab: 'Comandos rápidos',
+      audit: auditEs,
       waitingForAgent: 'Esperando a que el agente se conecte.',
       noMetricsYet: 'Todavía no hay métricas. Aparecen cuando el agente está conectado.',
       terminalClosed: 'terminal cerrada',
@@ -1032,6 +1041,8 @@ const resources = {
       activityAction_server_delete: 'Eliminó un servidor',
       activityAction_server_terminalOpen: 'Abrió una terminal del host',
       activityAction_server_terminalClose: 'Cerró una terminal del host',
+      activityAction_server_audit: 'Ejecutó una auditoría del servidor',
+      activityAction_server_quickAction: 'Aplicó una acción de limpieza en un servidor',
       activityAction_github_createManifest: 'Inició el registro de una GitHub App',
       activityAction_github_completeManifest: 'Completó el registro de una GitHub App',
       activityAction_github_setInstallation: 'Guardó una instalación de GitHub',

@@ -1,5 +1,6 @@
 #include "connection/ws_client.hpp"
 
+#include "audit/audit_engine.hpp"
 #include "metrics/host_metrics.hpp"
 #include "protocol/codec.hpp"
 #include "runtime/db_manage.hpp"
@@ -52,7 +53,8 @@ WsClient::WsClient(net::io_context& ioc, AgentConfig config, DockerRuntime& runt
       reconnectTimer_(ioc),
       heartbeatTimer_(ioc),
       metricsTimer_(ioc),
-      containerMetricsTimer_(ioc) {
+      containerMetricsTimer_(ioc),
+      processSnapshotTimer_(ioc) {
   // admin_url like wss://host/api/agents/connect or ws://host:3000/api/agents/connect
   std::string url = config_.adminUrl;
   if (url.rfind("wss://", 0) == 0) {
@@ -152,6 +154,7 @@ void WsClient::onHandshake(beast::error_code ec) {
   startHeartbeat();
   startMetrics();
   startContainerMetrics();
+  startProcessSnapshots();
 }
 
 void WsClient::doRead() {
@@ -441,6 +444,13 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
       }).detach();
       break;
     }
+    case ::highcube::QUICK_COMMAND: {
+      ::highcube::QuickCommand order;
+      if (order.ParseFromString(envelope.payload())) {
+        runQuickCommand(order);
+      }
+      break;
+    }
     default:
       break;
   }
@@ -524,6 +534,93 @@ void WsClient::startMetrics() {
     self->send(makeEnvelope(::highcube::HOST_METRICS, metrics));
     self->startMetrics();
   });
+}
+
+void WsClient::startProcessSnapshots() {
+  processSnapshotTimer_.expires_after(std::chrono::seconds(15));
+  processSnapshotTimer_.async_wait([self = shared_from_this()](beast::error_code ec) {
+    if (ec || !self->connected_) {
+      return;
+    }
+    // Walking /proc and resolving container names stays off the socket thread.
+    if (!self->processSnapshotRunning_.exchange(true)) {
+      std::thread([self]() {
+        try {
+          ::highcube::ProcessSnapshot snapshot;
+          snapshot.set_payload_json(collectProcessSnapshotJson(self->processSampler_));
+          snapshot.set_collected_at_unix_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                std::chrono::system_clock::now().time_since_epoch())
+                                                .count());
+          net::post(self->ioc_, [self, snapshot]() {
+            if (self->connected_) {
+              self->send(makeEnvelope(::highcube::PROCESS_SNAPSHOT, snapshot));
+            }
+          });
+        } catch (const std::exception& ex) {
+          spdlog::warn("process snapshot failed: {}", ex.what());
+        }
+        self->processSnapshotRunning_ = false;
+      }).detach();
+    }
+    self->startProcessSnapshots();
+  });
+}
+
+void WsClient::runQuickCommand(const ::highcube::QuickCommand& order) {
+  auto self = shared_from_this();
+  const auto reply = [self](const ::highcube::QuickCommandResult& msg) {
+    net::post(self->ioc_, [self, msg]() {
+      if (self->connected_) {
+        self->send(makeEnvelope(::highcube::QUICK_COMMAND_RESULT, msg));
+      }
+    });
+  };
+  // Audits walk the whole disk; a couple at a time is plenty for one host.
+  if (quickCommandsRunning_.fetch_add(1) >= 3) {
+    --quickCommandsRunning_;
+    ::highcube::QuickCommandResult msg;
+    msg.set_correlation_id(order.correlation_id());
+    msg.set_ok(false);
+    msg.set_error("Another analysis is already running on this server");
+    reply(msg);
+    return;
+  }
+  std::thread([self, order, reply]() {
+    ::highcube::QuickCommandResult msg;
+    msg.set_correlation_id(order.correlation_id());
+    try {
+      auto params = nlohmann::json::parse(order.payload_json().empty() ? "{}" : order.payload_json(), nullptr, false);
+      if (!params.is_object()) {
+        params = nlohmann::json::object();
+      }
+      nlohmann::json result;
+      if (order.kind() == "audit") {
+        const auto correlationId = order.correlation_id();
+        result = audit::runAudit(order.name(), params, [self, correlationId](const nlohmann::json& check) {
+          ::highcube::QuickCommandProgress progress;
+          progress.set_correlation_id(correlationId);
+          progress.set_check_json(check.dump());
+          net::post(self->ioc_, [self, progress]() {
+            if (self->connected_) {
+              self->send(makeEnvelope(::highcube::QUICK_COMMAND_PROGRESS, progress));
+            }
+          });
+        });
+      } else if (order.kind() == "action") {
+        spdlog::info("running quick action {}", order.name());
+        result = audit::runAction(order.name(), params);
+      } else {
+        throw std::invalid_argument("Unknown quick command kind");
+      }
+      msg.set_ok(true);
+      msg.set_payload_json(result.dump());
+    } catch (const std::exception& ex) {
+      msg.set_ok(false);
+      msg.set_error(ex.what());
+    }
+    --self->quickCommandsRunning_;
+    reply(msg);
+  }).detach();
 }
 
 void WsClient::startContainerMetrics() {
