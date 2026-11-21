@@ -537,7 +537,7 @@ void WsClient::startMetrics() {
 }
 
 void WsClient::startProcessSnapshots() {
-  processSnapshotTimer_.expires_after(std::chrono::seconds(15));
+  processSnapshotTimer_.expires_after(std::chrono::seconds(60));
   processSnapshotTimer_.async_wait([self = shared_from_this()](beast::error_code ec) {
     if (ec || !self->connected_) {
       return;

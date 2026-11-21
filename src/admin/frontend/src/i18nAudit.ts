@@ -48,7 +48,7 @@ export const auditEn = {
   exportMarkdown: 'Copy as Markdown',
   verdictTitle: 'Verdict',
   partialCoverage:
-    'Process history covers only {{pct}}% of the window. The agent records processes every 15 seconds since its last update, so results are partial.',
+    'Process history covers only {{pct}}% of the window. The agent records processes every 60 seconds since its last update, so results are partial.',
   keyFindings: 'Key findings',
   noIssues: 'No warnings or critical issues.',
   recommendedActions: 'Recommended actions',
@@ -373,7 +373,7 @@ export const auditEn = {
     res_window_peak:
       'Peak of {{peak}} at {{peakAt}}, average {{avg}}. It stayed above the threshold for {{aboveMinutes}} minutes (context: {{baseline}}).',
     res_no_snapshots:
-      'There is no process history for this window. The agent records it every 15 seconds once it is updated.',
+      'There is no process history for this window. The agent records it every 60 seconds once it is updated.',
     res_breakdown_user: 'Most CPU time was spent in user processes ({{pct}}): an application is doing the work.',
     res_breakdown_iowait: 'The CPU spent {{pct}} waiting for disk: the bottleneck is I/O, not computation.',
     res_breakdown_steal: '{{pct}} of CPU time was stolen by the hypervisor: other VMs on the same host compete for it.',
@@ -456,7 +456,7 @@ export const auditEs: typeof auditEn = {
   exportMarkdown: 'Copiar como Markdown',
   verdictTitle: 'Veredicto',
   partialCoverage:
-    'El historial de procesos cubre solo el {{pct}}% de la ventana. El agente registra procesos cada 15 segundos desde su última actualización, así que los resultados son parciales.',
+    'El historial de procesos cubre solo el {{pct}}% de la ventana. El agente registra procesos cada 60 segundos desde su última actualización, así que los resultados son parciales.',
   keyFindings: 'Hallazgos principales',
   noIssues: 'No hay advertencias ni problemas críticos.',
   recommendedActions: 'Acciones recomendadas',
@@ -781,7 +781,7 @@ export const auditEs: typeof auditEn = {
     res_window_peak:
       'Pico de {{peak}} a las {{peakAt}}, promedio {{avg}}. Estuvo por encima del umbral durante {{aboveMinutes}} minutos (contexto: {{baseline}}).',
     res_no_snapshots:
-      'No hay historial de procesos para esta ventana. El agente lo registra cada 15 segundos una vez actualizado.',
+      'No hay historial de procesos para esta ventana. El agente lo registra cada 60 segundos una vez actualizado.',
     res_breakdown_user: 'La mayor parte del tiempo de CPU fue de procesos de usuario ({{pct}}): una aplicación está haciendo el trabajo.',
     res_breakdown_iowait: 'La CPU pasó el {{pct}} esperando al disco: el cuello de botella es I/O, no cómputo.',
     res_breakdown_steal: 'El hipervisor se llevó el {{pct}} del tiempo de CPU: otras VMs del mismo host compiten por ella.',

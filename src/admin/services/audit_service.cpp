@@ -22,7 +22,8 @@ using json = nlohmann::json;
 
 constexpr long long kMinuteMs = 60LL * 1000;
 constexpr long long kContextMs = 10 * kMinuteMs;
-constexpr long long kSnapshotIntervalMs = 15 * 1000;
+// Must match the agent process-snapshot timer in WsClient::startProcessSnapshots.
+constexpr long long kSnapshotIntervalMs = 60 * 1000;
 
 // ---------------------------------------------------------------- time helpers
 long long nowMs() {

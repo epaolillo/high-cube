@@ -44,6 +44,19 @@ std::optional<int64_t> parseAccessServerId(Repositories& repos, const nlohmann::
   return serverId;
 }
 
+// Process history only feeds Quick Commands, so it expires on its own clock
+// instead of the metrics TTL (seven days by default).
+constexpr int kProcessSnapshotTtlHours = 48;
+
+std::string isoUtc(std::chrono::system_clock::time_point tp) {
+  const std::time_t t = std::chrono::system_clock::to_time_t(tp);
+  std::tm tm{};
+  gmtime_r(&t, &tm);
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  return oss.str();
+}
+
 }  // namespace
 
 SettingsService::SettingsService(AppContext& ctx) : ctx_(ctx) {}
@@ -139,20 +152,16 @@ nlohmann::json SettingsService::updateMetricsSettings(const nlohmann::json& body
 MetricsRetentionService::MetricsRetentionService(AppContext& ctx) : ctx_(ctx) {}
 
 void MetricsRetentionService::runOnce() {
+  const auto now = std::chrono::system_clock::now();
   const int days = std::stoi(ctx_.repos->getSetting("metrics_ttl_days", "7"));
-  const auto cutoff = std::chrono::system_clock::now() - std::chrono::hours{24 * days};
-  const std::time_t t = std::chrono::system_clock::to_time_t(cutoff);
-  std::tm tm{};
-  gmtime_r(&t, &tm);
-  std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-  ctx_.repos->deleteMetricsOlderThan(oss.str());
-  ctx_.repos->deleteProcessSnapshotsOlderThan(oss.str());
+  const auto cutoff = isoUtc(now - std::chrono::hours{24 * days});
+  ctx_.repos->deleteMetricsOlderThan(cutoff);
+  ctx_.repos->deleteProcessSnapshotsOlderThan(isoUtc(now - std::chrono::hours{kProcessSnapshotTtlHours}));
   // Keep crash traceability under the same retention window as metrics.
-  ctx_.repos->deleteIncidentsOlderThan(oss.str());
+  ctx_.repos->deleteIncidentsOlderThan(cutoff);
   // The audit trail and presence history share the same retention window.
-  ctx_.repos->deleteActivityOlderThan(oss.str());
-  ctx_.repos->deletePresenceOlderThan(oss.str());
+  ctx_.repos->deleteActivityOlderThan(cutoff);
+  ctx_.repos->deletePresenceOlderThan(cutoff);
 }
 
 }  // namespace highcube::admin
