@@ -386,6 +386,22 @@ bool isVolumeName(const std::string& value) {
   return true;
 }
 
+std::string trimSlash(std::string path) {
+  while (path.size() > 1 && (path.back() == '/' || path.back() == '\r')) path.pop_back();
+  return path;
+}
+
+// A bind can point at another volume's folder. Docker still calls that volume dangling,
+// because no container names it, but removing it deletes the other volume's files.
+bool deviceUsesVolume(const std::string& device, const std::string& mountpoint) {
+  if (device.empty() || mountpoint.empty()) return false;
+  if (device == mountpoint) return true;
+  const auto root = mountpoint.size() > 6 && mountpoint.ends_with("/_data")
+                        ? mountpoint.substr(0, mountpoint.size() - 6)
+                        : mountpoint;
+  return device == root || device.rfind(root + "/", 0) == 0;
+}
+
 // Sizes reported by `docker system df -v`, keyed by volume name.
 std::map<std::string, long long> dockerVolumeSizes() {
   std::map<std::string, long long> sizes;
@@ -473,39 +489,80 @@ json checkDocker(const json&) {
   long long deletableVolumes = 0;
   int volumesWithData = 0;
   int volumesLinked = 0;
-  if (!orphanNames.empty()) {
+  int volumesKept = 0;
+  const auto everyName = splitLines(runCommand({"docker", "volume", "ls", "-q"}, 60).out);
+  std::vector<std::string> allNames;
+  for (const auto& line : everyName) {
+    const auto name = trim(line);
+    if (isVolumeName(name)) allNames.push_back(name);
+  }
+  json inspected = json::array();
+  if (!allNames.empty()) {
     std::vector<std::string> inspectArgs = {"docker", "volume", "inspect"};
-    inspectArgs.insert(inspectArgs.end(), orphanNames.begin(), orphanNames.end());
-    const auto inspected = json::parse(runCommand(inspectArgs, 60).out, nullptr, false);
+    inspectArgs.insert(inspectArgs.end(), allNames.begin(), allNames.end());
+    const auto parsed = json::parse(runCommand(inspectArgs, 60).out, nullptr, false);
+    if (parsed.is_array()) inspected = parsed;
+  }
+  // mountpoint -> names of volumes whose bind device is that folder
+  std::map<std::string, std::vector<std::string>> holders;
+  for (const auto& item : inspected) {
+    if (!item.is_object() || !item.contains("Options") || !item["Options"].is_object()) continue;
+    const auto device = trimSlash(item["Options"].value("device", std::string{}));
+    const auto name = item.value("Name", std::string{});
+    if (device.empty() || !isVolumeName(name)) continue;
+    for (const auto& other : inspected) {
+      if (!other.is_object()) continue;
+      const auto otherName = other.value("Name", std::string{});
+      const auto otherMount = trimSlash(other.value("Mountpoint", std::string{}));
+      if (otherName == name || !deviceUsesVolume(device, otherMount)) continue;
+      holders[otherMount].push_back(name);
+    }
+  }
+  if (!orphanNames.empty() && inspected.is_array()) {
     const auto sizes = dockerVolumeSizes();
-    if (inspected.is_array()) {
-      for (const auto& item : inspected) {
-        if (!item.is_object()) continue;
-        const auto name = item.value("Name", std::string{});
-        if (!isVolumeName(name)) continue;
-        std::string device;
-        if (item.contains("Options") && item["Options"].is_object()) {
-          device = item["Options"].value("device", std::string{});
+    const std::set<std::string> orphanSet(orphanNames.begin(), orphanNames.end());
+    for (const auto& item : inspected) {
+      if (!item.is_object()) continue;
+      const auto name = item.value("Name", std::string{});
+      if (!orphanSet.count(name)) continue;
+      std::string device;
+      if (item.contains("Options") && item["Options"].is_object()) {
+        device = item["Options"].value("device", std::string{});
+      }
+      const auto mountpoint = trimSlash(item.value("Mountpoint", std::string{}));
+      const bool linked = !trimSlash(device).empty();
+      const auto sizeIt = sizes.find(name);
+      const bool knownSize = sizeIt != sizes.end() && sizeIt->second >= 0;
+      const long long bytes = knownSize ? sizeIt->second : -1;
+      const auto held = holders.find(mountpoint);
+      std::string usedBy;
+      if (held != holders.end()) {
+        for (const auto& holder : held->second) {
+          if (!usedBy.empty()) usedBy += ", ";
+          usedBy += holder;
         }
-        const bool linked = !device.empty();
-        const auto sizeIt = sizes.find(name);
-        const bool knownSize = sizeIt != sizes.end() && sizeIt->second >= 0;
-        const long long bytes = knownSize ? sizeIt->second : -1;
-        orphanRows.push_back({{"name", name},
-                              {"created", item.value("CreatedAt", std::string{})},
-                              {"size", knownSize ? json(bytes) : json(nullptr)},
-                              {"where", linked ? device : "docker"},
-                              {"effect", linked ? "unlink" : "delete"}});
-        json target = {{"name", name}};
-        if (linked) {
-          ++volumesLinked;
-          target["path"] = device;
-          actions.push_back(suggestAction("docker_volume_unlink", target, 0, "low"));
-        } else {
-          ++volumesWithData;
-          if (knownSize) deletableVolumes += bytes;
-          actions.push_back(suggestAction("docker_volume_rm", target, knownSize ? bytes : 0, "high"));
-        }
+      }
+      const bool kept = !usedBy.empty();
+      orphanRows.push_back({{"name", name},
+                            {"created", item.value("CreatedAt", std::string{})},
+                            {"size", knownSize ? json(bytes) : json(nullptr)},
+                            {"where", linked ? device : "docker"},
+                            {"usedBy", kept ? json(usedBy) : json(nullptr)},
+                            {"effect", kept ? "keep" : (linked ? "unlink" : "delete")}});
+      if (kept) {
+        // The files belong to a volume that is still referenced. Never offer a delete.
+        ++volumesKept;
+        continue;
+      }
+      json target = {{"name", name}};
+      if (linked) {
+        ++volumesLinked;
+        target["path"] = device;
+        actions.push_back(suggestAction("docker_volume_unlink", target, 0, "low"));
+      } else {
+        ++volumesWithData;
+        if (knownSize) deletableVolumes += bytes;
+        actions.push_back(suggestAction("docker_volume_rm", target, knownSize ? bytes : 0, "high"));
       }
     }
     std::sort(orphanRows.begin(), orphanRows.end(), [](const json& a, const json& b) {
@@ -524,6 +581,9 @@ json checkDocker(const json&) {
   }
   if (volumesLinked > 0) {
     findings.push_back(message("disk_docker_volumes_linked", {{"count", volumesLinked}}));
+  }
+  if (volumesKept > 0) {
+    findings.push_back(message("disk_docker_volumes_kept", {{"count", volumesKept}}));
   }
   if (danglingImages > 0) {
     findings.push_back(message("disk_docker_dangling", {{"count", danglingImages}}));
@@ -547,6 +607,7 @@ json checkDocker(const json&) {
                                  {"created", "date"},
                                  {"size", "bytes"},
                                  {"where", "text"},
+                                 {"usedBy", "text"},
                                  {"effect", "text"}},
                                 orphanRows));
   }

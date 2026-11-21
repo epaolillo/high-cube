@@ -151,7 +151,7 @@ export const auditEn = {
     docker_containers_prune: 'Runs docker container prune. Every stopped container and its writable layer is deleted.',
     docker_volumes_prune: 'Runs docker volume prune. Data in volumes not attached to any container is deleted permanently.',
     docker_volume_rm:
-      'Deletes the files stored in the unused Docker volume {{name}}. This cannot be undone. Volumes attached to a container are refused.',
+      'Deletes the files stored in the unused Docker volume {{name}}. This cannot be undone. Refused when a container uses the volume, or when another volume stores its data in that folder.',
     docker_volume_unlink:
       'Removes the Docker name {{name}}. The files stay in {{path}}, so this does not free disk space. A later deploy can point at that folder again.',
     container_log_truncate: 'Empties the JSON log file of this container. The container keeps running; past logs are lost.',
@@ -226,6 +226,7 @@ export const auditEn = {
     name: 'Name',
     created: 'Created',
     where: 'Where the data is',
+    usedBy: 'Used by',
     effect: 'If you remove it',
     image: 'Image',
     status: 'Status',
@@ -310,6 +311,7 @@ export const auditEn = {
     effect: {
       delete: 'Deletes the files and frees the size shown',
       unlink: 'Removes the Docker name only. The folder stays',
+      keep: 'Nothing. Another volume stores its data here, so the files stay',
     },
     where: { docker: 'Inside this Docker volume' },
   },
@@ -339,6 +341,8 @@ export const auditEn = {
       '{{count}} unused volumes store their own files ({{bytes}}). Removing one deletes those files.',
     disk_docker_volumes_linked:
       '{{count}} unused volumes only point at a folder on the server. Removing the name does not delete that folder or free space.',
+    disk_docker_volumes_kept:
+      '{{count}} volumes look unused because no container names them, but another volume stores its files there. They are not offered for deletion.',
     disk_docker_dangling: '{{count}} images have no tag (dangling layers from old builds).',
     disk_docker_build_cache: 'The build cache alone takes {{bytes}}.',
     disk_docker_reclaimable: 'Docker can reclaim {{bytes}}. There are {{stopped}} stopped containers.',
@@ -582,7 +586,7 @@ export const auditEs: typeof auditEn = {
     docker_containers_prune: 'Ejecuta docker container prune. Se borran todos los contenedores detenidos y su capa de escritura.',
     docker_volumes_prune: 'Ejecuta docker volume prune. Los datos de volúmenes sin contenedor se borran para siempre.',
     docker_volume_rm:
-      'Borra los archivos del volumen de Docker {{name}}, que ningún contenedor usa. No se puede deshacer. Si un contenedor lo está usando, se rechaza.',
+      'Borra los archivos del volumen de Docker {{name}}, que ningún contenedor usa. No se puede deshacer. Se rechaza si un contenedor lo usa, o si otro volumen guarda sus datos en esa carpeta.',
     docker_volume_unlink:
       'Quita el nombre de Docker {{name}}. Los archivos siguen en {{path}}, así que no se libera espacio. Un deploy posterior puede volver a apuntar a esa carpeta.',
     container_log_truncate: 'Vacía el archivo de log JSON de este contenedor. Sigue corriendo; se pierden los logs anteriores.',
@@ -657,6 +661,7 @@ export const auditEs: typeof auditEn = {
     name: 'Nombre',
     created: 'Creado',
     where: 'Dónde están los datos',
+    usedBy: 'Lo usa',
     effect: 'Si lo quitás',
     image: 'Imagen',
     status: 'Estado',
@@ -741,6 +746,7 @@ export const auditEs: typeof auditEn = {
     effect: {
       delete: 'Borra los archivos y libera el tamaño indicado',
       unlink: 'Quita solo el nombre de Docker. La carpeta queda',
+      keep: 'Nada. Otro volumen guarda sus datos acá, así que los archivos quedan',
     },
     where: { docker: 'Adentro de este volumen de Docker' },
   },
@@ -770,6 +776,8 @@ export const auditEs: typeof auditEn = {
       '{{count}} volúmenes sin uso guardan sus propios archivos ({{bytes}}). Quitar uno borra esos archivos.',
     disk_docker_volumes_linked:
       '{{count}} volúmenes sin uso solo apuntan a una carpeta del servidor. Quitar el nombre no borra esa carpeta ni libera espacio.',
+    disk_docker_volumes_kept:
+      '{{count}} volúmenes parecen sin uso porque ningún contenedor los nombra, pero otro volumen guarda sus archivos ahí. No se ofrecen para borrar.',
     disk_docker_dangling: '{{count}} imágenes no tienen tag (capas sueltas de builds viejos).',
     disk_docker_build_cache: 'Solo la caché de build ocupa {{bytes}}.',
     disk_docker_reclaimable: 'Docker puede recuperar {{bytes}}. Hay {{stopped}} contenedores detenidos.',

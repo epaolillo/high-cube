@@ -81,6 +81,45 @@ bool isDanglingVolume(const std::string& name) {
   return false;
 }
 
+std::string trimSlash(std::string path) {
+  while (path.size() > 1 && (path.back() == '/' || path.back() == '\r')) path.pop_back();
+  return path;
+}
+
+bool deviceUsesVolume(const std::string& device, const std::string& mountpoint) {
+  if (device.empty() || mountpoint.empty()) return false;
+  if (device == mountpoint) return true;
+  const auto root = mountpoint.size() > 6 && mountpoint.ends_with("/_data")
+                        ? mountpoint.substr(0, mountpoint.size() - 6)
+                        : mountpoint;
+  return device == root || device.rfind(root + "/", 0) == 0;
+}
+
+// True when some other volume bind-mounts this volume's folder. docker volume rm would
+// delete those files even though Docker reports this volume as dangling.
+bool anotherVolumeUses(const std::string& name) {
+  const auto own = json::parse(runCommand({"docker", "volume", "inspect", name}, 60).out, nullptr, false);
+  if (!own.is_array() || own.empty() || !own[0].is_object()) {
+    throw std::invalid_argument("Could not inspect the volume");
+  }
+  const auto mountpoint = trimSlash(own[0].value("Mountpoint", std::string{}));
+  if (mountpoint.empty()) throw std::invalid_argument("Could not inspect the volume");
+  std::vector<std::string> args = {"docker", "volume", "inspect"};
+  for (const auto& line : splitLines(runCommand({"docker", "volume", "ls", "-q"}, 60).out)) {
+    const auto other = trim(line);
+    if (other.empty() || other == name || !isVolumeName(other)) continue;
+    args.push_back(other);
+  }
+  if (args.size() == 2) return false;
+  const auto all = json::parse(runCommand(args, 60).out, nullptr, false);
+  if (!all.is_array()) throw std::invalid_argument("Could not inspect the volume");
+  for (const auto& item : all) {
+    if (!item.is_object() || !item.contains("Options") || !item["Options"].is_object()) continue;
+    if (deviceUsesVolume(trimSlash(item["Options"].value("device", std::string{})), mountpoint)) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 json runAction(const std::string& actionId, const json& params) {
@@ -95,6 +134,10 @@ json runAction(const std::string& actionId, const json& params) {
     if (!isVolumeName(name)) throw std::invalid_argument("Invalid volume name");
     // A volume attached while the report was open must not be removed.
     if (!isDanglingVolume(name)) throw std::invalid_argument("Volume is in use or does not exist");
+    // A dangling name can still be the folder where another volume keeps its files.
+    if (anotherVolumeUses(name)) {
+      throw std::invalid_argument("Another volume stores its data in this volume");
+    }
     return runDocker({"volume", "rm", name});
   }
 

@@ -149,7 +149,7 @@ function KvView({ block }: { block: KvBlock }) {
 export function BlockView({ block }: { block: AuditBlock }) {
   const { t } = useTranslation();
   return (
-    <div style={{ marginTop: 12 }}>
+    <div style={{ marginTop: 12, minWidth: 0, maxWidth: '100%', overflowX: 'auto' }}>
       <Typography.Text strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>
         {t(`audit.block.${block.title}`, { defaultValue: block.title })}
       </Typography.Text>

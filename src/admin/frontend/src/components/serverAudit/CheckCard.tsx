@@ -124,6 +124,8 @@ export function CheckCard({
         borderLeft: `3px solid ${accent}`,
         borderRadius: 8,
         padding: '12px 16px',
+        minWidth: 0,
+        maxWidth: '100%',
         background: check.status === 'pending' ? '#FAFBFC' : '#fff',
         opacity: check.status === 'pending' ? 0.7 : 1,
       }}
@@ -182,7 +184,7 @@ export function CheckCard({
         <Collapse
           ghost
           size="small"
-          style={{ marginLeft: 14, marginTop: 4 }}
+          style={{ marginLeft: 14, marginTop: 4, minWidth: 0 }}
           defaultActiveKey={
             blocks.some((block) => block.kind === 'line' || block.title === 'orphanVolumes') ? ['details'] : []
           }

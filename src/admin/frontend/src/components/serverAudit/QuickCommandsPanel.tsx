@@ -183,7 +183,7 @@ export function QuickCommandsPanel({ serverId, request }: { serverId: string; re
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 24, minWidth: 0, maxWidth: '100%' }}>
       <Space wrap size={12} align="start">
         <Select
           style={{ width: 260 }}
@@ -255,7 +255,8 @@ export function QuickCommandsPanel({ serverId, request }: { serverId: string; re
       )}
 
       {job && (
-        <div style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+        // minmax(0, 1fr) lets the column shrink below its content, so wide charts and tables cannot push the layout.
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12, marginTop: 16 }}>
           {job.status === 'done' && (
             <ExecutiveSummary job={job} applied={applied} onAction={setPendingAction} onExport={exportMarkdown} />
           )}
