@@ -136,7 +136,13 @@ export function ActionConfirmModal({
         )
       ) : (
         <div>
-          <Typography.Paragraph>{t(`audit.actionHint.${action.id}`, { defaultValue: '' })}</Typography.Paragraph>
+          <Typography.Paragraph>
+            {t(`audit.actionHint.${action.id}`, {
+              defaultValue: '',
+              name: String(action.target?.name ?? ''),
+              path: String(action.target?.path ?? ''),
+            })}
+          </Typography.Paragraph>
           <Space direction="vertical" style={{ width: '100%' }}>
             {targetLabel && (
               <div>

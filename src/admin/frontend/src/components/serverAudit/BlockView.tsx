@@ -32,6 +32,10 @@ function TableView({ block }: { block: TableBlock }) {
             : (a: Record<string, unknown>, b: Record<string, unknown>) =>
                 Number(a[column.key] ?? 0) - Number(b[column.key] ?? 0),
         render: (value: unknown) => {
+          if ((column.key === 'effect' || column.key === 'where') && value != null && value !== '') {
+            const translated = t(`audit.volume.${column.key}.${String(value)}`, { defaultValue: '' });
+            if (translated) return translated;
+          }
           const text = formatValue(value, column.type);
           return column.type === 'text' && text.length > 40 ? (
             <Tooltip title={text}>

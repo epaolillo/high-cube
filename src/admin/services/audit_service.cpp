@@ -277,6 +277,7 @@ const std::set<std::string>& adminCheckIds() {
 const std::set<std::string>& allowedActions() {
   static const std::set<std::string> ids = {
       "docker_images_prune", "docker_builder_prune", "docker_containers_prune", "docker_volumes_prune",
+      "docker_volume_rm", "docker_volume_unlink",
       "container_log_truncate", "tmp_clean",          "pkg_cache_clean",         "pkg_autoremove",
       "journal_vacuum",       "rotated_logs_clean",   "user_caches_clean",       "restart_container",
       "terminate_process",    "drop_page_cache"};

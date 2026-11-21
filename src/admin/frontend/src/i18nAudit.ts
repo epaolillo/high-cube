@@ -129,6 +129,8 @@ export const auditEn = {
     docker_builder_prune: 'Clear Docker build cache',
     docker_containers_prune: 'Remove stopped containers',
     docker_volumes_prune: 'Remove orphan Docker volumes',
+    docker_volume_rm: 'Delete unused volume',
+    docker_volume_unlink: 'Remove unused volume name',
     container_log_truncate: 'Empty container log',
     tmp_clean: 'Delete temporary files older than 7 days',
     pkg_cache_clean: 'Clear package manager cache',
@@ -146,6 +148,10 @@ export const auditEn = {
     docker_builder_prune: 'Runs docker builder prune -a. The next builds will be slower because layers are rebuilt.',
     docker_containers_prune: 'Runs docker container prune. Every stopped container and its writable layer is deleted.',
     docker_volumes_prune: 'Runs docker volume prune. Data in volumes not attached to any container is deleted permanently.',
+    docker_volume_rm:
+      'Deletes the files stored in the unused Docker volume {{name}}. This cannot be undone. Volumes attached to a container are refused.',
+    docker_volume_unlink:
+      'Removes the Docker name {{name}}. The files stay in {{path}}, so this does not free disk space. A later deploy can point at that folder again.',
     container_log_truncate: 'Empties the JSON log file of this container. The container keeps running; past logs are lost.',
     tmp_clean: 'Deletes files in /tmp and /var/tmp that were not modified in the last 7 days.',
     pkg_cache_clean: 'Runs apt-get clean (or dnf/yum clean all). Downloaded package files are removed.',
@@ -164,6 +170,7 @@ export const auditEn = {
     heaviestDirectories: 'Heaviest directories',
     largeFiles: 'Large files',
     dockerUsage: 'Docker disk usage',
+    orphanVolumes: 'Unused volumes',
     stoppedContainers: 'Stopped containers',
     containerLogs: 'Container logs',
     logDirectories: '/var/log by directory',
@@ -215,6 +222,9 @@ export const auditEn = {
     active: 'Active',
     reclaimable: 'Reclaimable',
     name: 'Name',
+    created: 'Created',
+    where: 'Where the data is',
+    effect: 'If you remove it',
     image: 'Image',
     status: 'Status',
     container: 'Container',
@@ -294,6 +304,13 @@ export const auditEn = {
     archive: 'Archives',
     host: 'Host (no container)',
   },
+  volume: {
+    effect: {
+      delete: 'Deletes the files and frees the size shown',
+      unlink: 'Removes the Docker name only. The folder stays',
+    },
+    where: { docker: 'Inside this Docker volume' },
+  },
   c: {
     check_error: 'The check failed: {{message}}',
     disk_fs_ok: 'All {{count}} filesystems have room to spare. The root filesystem is {{rootPct}} full.',
@@ -316,6 +333,10 @@ export const auditEn = {
     disk_docker_missing: 'Docker is not installed on this server.',
     disk_docker_unavailable: 'Docker did not answer.',
     disk_docker_orphan_volumes: '{{count}} volumes are not attached to any container ({{bytes}}).',
+    disk_docker_volumes_deleted:
+      '{{count}} unused volumes store their own files ({{bytes}}). Removing one deletes those files.',
+    disk_docker_volumes_linked:
+      '{{count}} unused volumes only point at a folder on the server. Removing the name does not delete that folder or free space.',
     disk_docker_dangling: '{{count}} images have no tag (dangling layers from old builds).',
     disk_docker_build_cache: 'The build cache alone takes {{bytes}}.',
     disk_docker_reclaimable: 'Docker can reclaim {{bytes}}. There are {{stopped}} stopped containers.',
@@ -537,6 +558,8 @@ export const auditEs: typeof auditEn = {
     docker_builder_prune: 'Vaciar la caché de build de Docker',
     docker_containers_prune: 'Eliminar contenedores detenidos',
     docker_volumes_prune: 'Eliminar volúmenes huérfanos de Docker',
+    docker_volume_rm: 'Eliminar volumen sin uso',
+    docker_volume_unlink: 'Quitar el nombre de un volumen sin uso',
     container_log_truncate: 'Vaciar el log del contenedor',
     tmp_clean: 'Borrar temporales de más de 7 días',
     pkg_cache_clean: 'Vaciar la caché de paquetes',
@@ -554,6 +577,10 @@ export const auditEs: typeof auditEn = {
     docker_builder_prune: 'Ejecuta docker builder prune -a. Los próximos builds serán más lentos porque se reconstruyen las capas.',
     docker_containers_prune: 'Ejecuta docker container prune. Se borran todos los contenedores detenidos y su capa de escritura.',
     docker_volumes_prune: 'Ejecuta docker volume prune. Los datos de volúmenes sin contenedor se borran para siempre.',
+    docker_volume_rm:
+      'Borra los archivos del volumen de Docker {{name}}, que ningún contenedor usa. No se puede deshacer. Si un contenedor lo está usando, se rechaza.',
+    docker_volume_unlink:
+      'Quita el nombre de Docker {{name}}. Los archivos siguen en {{path}}, así que no se libera espacio. Un deploy posterior puede volver a apuntar a esa carpeta.',
     container_log_truncate: 'Vacía el archivo de log JSON de este contenedor. Sigue corriendo; se pierden los logs anteriores.',
     tmp_clean: 'Borra archivos de /tmp y /var/tmp que no se modificaron en los últimos 7 días.',
     pkg_cache_clean: 'Ejecuta apt-get clean (o dnf/yum clean all). Se borran los paquetes descargados.',
@@ -572,6 +599,7 @@ export const auditEs: typeof auditEn = {
     heaviestDirectories: 'Directorios más pesados',
     largeFiles: 'Archivos grandes',
     dockerUsage: 'Uso de disco de Docker',
+    orphanVolumes: 'Volúmenes sin uso',
     stoppedContainers: 'Contenedores detenidos',
     containerLogs: 'Logs de contenedores',
     logDirectories: '/var/log por directorio',
@@ -623,6 +651,9 @@ export const auditEs: typeof auditEn = {
     active: 'Activos',
     reclaimable: 'Recuperable',
     name: 'Nombre',
+    created: 'Creado',
+    where: 'Dónde están los datos',
+    effect: 'Si lo quitás',
     image: 'Imagen',
     status: 'Estado',
     container: 'Contenedor',
@@ -702,6 +733,13 @@ export const auditEs: typeof auditEn = {
     archive: 'Archivos comprimidos',
     host: 'Host (sin contenedor)',
   },
+  volume: {
+    effect: {
+      delete: 'Borra los archivos y libera el tamaño indicado',
+      unlink: 'Quita solo el nombre de Docker. La carpeta queda',
+    },
+    where: { docker: 'Adentro de este volumen de Docker' },
+  },
   c: {
     check_error: 'El chequeo falló: {{message}}',
     disk_fs_ok: 'Los {{count}} filesystems tienen espacio de sobra. El filesystem raíz está al {{rootPct}}.',
@@ -724,6 +762,10 @@ export const auditEs: typeof auditEn = {
     disk_docker_missing: 'Docker no está instalado en este servidor.',
     disk_docker_unavailable: 'Docker no respondió.',
     disk_docker_orphan_volumes: '{{count}} volúmenes no están asociados a ningún contenedor ({{bytes}}).',
+    disk_docker_volumes_deleted:
+      '{{count}} volúmenes sin uso guardan sus propios archivos ({{bytes}}). Quitar uno borra esos archivos.',
+    disk_docker_volumes_linked:
+      '{{count}} volúmenes sin uso solo apuntan a una carpeta del servidor. Quitar el nombre no borra esa carpeta ni libera espacio.',
     disk_docker_dangling: '{{count}} imágenes no tienen tag (capas sueltas de builds viejos).',
     disk_docker_build_cache: 'Solo la caché de build ocupa {{bytes}}.',
     disk_docker_reclaimable: 'Docker puede recuperar {{bytes}}. Hay {{stopped}} contenedores detenidos.',

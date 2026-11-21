@@ -183,7 +183,9 @@ export function CheckCard({
           ghost
           size="small"
           style={{ marginLeft: 14, marginTop: 4 }}
-          defaultActiveKey={blocks.some((block) => block.kind === 'line') ? ['details'] : []}
+          defaultActiveKey={
+            blocks.some((block) => block.kind === 'line' || block.title === 'orphanVolumes') ? ['details'] : []
+          }
           items={[
             {
               key: 'details',

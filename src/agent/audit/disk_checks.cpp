@@ -16,6 +16,7 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -376,6 +377,39 @@ json checkLargeFiles(const json&) {
                                  rows)}}};
 }
 
+bool isVolumeName(const std::string& value) {
+  if (value.empty() || value.size() > 255) return false;
+  if (!std::isalnum(static_cast<unsigned char>(value.front()))) return false;
+  for (unsigned char ch : value) {
+    if (!std::isalnum(ch) && ch != '_' && ch != '.' && ch != '-') return false;
+  }
+  return true;
+}
+
+// Sizes reported by `docker system df -v`, keyed by volume name.
+std::map<std::string, long long> dockerVolumeSizes() {
+  std::map<std::string, long long> sizes;
+  const auto out = runCommand({"docker", "system", "df", "-v"}, 120);
+  bool inVolumes = false;
+  for (const auto& line : splitLines(out.out)) {
+    if (line.find("VOLUME NAME") != std::string::npos) {
+      inVolumes = true;
+      continue;
+    }
+    if (!inVolumes) continue;
+    if (trim(line).empty()) {
+      if (!sizes.empty()) break;
+      continue;
+    }
+    std::istringstream fields(line);
+    std::vector<std::string> parts;
+    for (std::string part; fields >> part;) parts.push_back(std::move(part));
+    if (parts.size() < 3) continue;
+    sizes[parts.front()] = parseHumanSize(parts.back(), true);
+  }
+  return sizes;
+}
+
 // ---------------------------------------------------------------- docker artifacts
 json checkDocker(const json&) {
   if (!commandExists("docker")) {
@@ -403,7 +437,11 @@ json checkDocker(const json&) {
                     {"reclaimable", reclaim}});
   }
   const auto dangling = splitLines(runCommand({"docker", "images", "-f", "dangling=true", "-q"}, 60).out);
-  const auto orphanVolumes = splitLines(runCommand({"docker", "volume", "ls", "-qf", "dangling=true"}, 60).out);
+  std::vector<std::string> orphanNames;
+  for (const auto& line : splitLines(runCommand({"docker", "volume", "ls", "-qf", "dangling=true"}, 60).out)) {
+    const auto name = trim(line);
+    if (isVolumeName(name)) orphanNames.push_back(name);
+  }
   const auto stoppedOut = runCommand({"docker", "ps", "-a", "-f", "status=exited", "-f", "status=created", "-f",
                                       "status=dead", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}"},
                                      60);
@@ -429,13 +467,63 @@ json checkDocker(const json&) {
   if (!stopped.empty() || containers > 0) {
     actions.push_back(suggestAction("docker_containers_prune", nullptr, containers, "medium"));
   }
-  const auto danglingVolumes = std::count_if(orphanVolumes.begin(), orphanVolumes.end(),
-                                             [](const std::string& line) { return !trim(line).empty(); });
   const auto danglingImages = std::count_if(dangling.begin(), dangling.end(),
                                             [](const std::string& line) { return !trim(line).empty(); });
-  if (danglingVolumes > 0) {
-    findings.push_back(message("disk_docker_orphan_volumes", {{"count", danglingVolumes}, {"bytes", volumes}}));
-    actions.push_back(suggestAction("docker_volumes_prune", nullptr, volumes, "high"));
+  json orphanRows = json::array();
+  long long deletableVolumes = 0;
+  int volumesWithData = 0;
+  int volumesLinked = 0;
+  if (!orphanNames.empty()) {
+    std::vector<std::string> inspectArgs = {"docker", "volume", "inspect"};
+    inspectArgs.insert(inspectArgs.end(), orphanNames.begin(), orphanNames.end());
+    const auto inspected = json::parse(runCommand(inspectArgs, 60).out, nullptr, false);
+    const auto sizes = dockerVolumeSizes();
+    if (inspected.is_array()) {
+      for (const auto& item : inspected) {
+        if (!item.is_object()) continue;
+        const auto name = item.value("Name", std::string{});
+        if (!isVolumeName(name)) continue;
+        std::string device;
+        if (item.contains("Options") && item["Options"].is_object()) {
+          device = item["Options"].value("device", std::string{});
+        }
+        const bool linked = !device.empty();
+        const auto sizeIt = sizes.find(name);
+        const bool knownSize = sizeIt != sizes.end() && sizeIt->second >= 0;
+        const long long bytes = knownSize ? sizeIt->second : -1;
+        orphanRows.push_back({{"name", name},
+                              {"created", item.value("CreatedAt", std::string{})},
+                              {"size", knownSize ? json(bytes) : json(nullptr)},
+                              {"where", linked ? device : "docker"},
+                              {"effect", linked ? "unlink" : "delete"}});
+        json target = {{"name", name}};
+        if (linked) {
+          ++volumesLinked;
+          target["path"] = device;
+          actions.push_back(suggestAction("docker_volume_unlink", target, 0, "low"));
+        } else {
+          ++volumesWithData;
+          if (knownSize) deletableVolumes += bytes;
+          actions.push_back(suggestAction("docker_volume_rm", target, knownSize ? bytes : 0, "high"));
+        }
+      }
+    }
+    std::sort(orphanRows.begin(), orphanRows.end(), [](const json& a, const json& b) {
+      const auto sizeOf = [](const json& row) {
+        return row.contains("size") && row["size"].is_number() ? row["size"].get<long long>() : -1;
+      };
+      return sizeOf(a) > sizeOf(b);
+    });
+  }
+  // docker system df counts a bind's whole folder as reclaimable, but removing the
+  // volume only drops the name. Count space that a delete really frees.
+  totalReclaim = totalReclaim - volumes + deletableVolumes;
+  if (volumesWithData > 0) {
+    findings.push_back(
+        message("disk_docker_volumes_deleted", {{"count", volumesWithData}, {"bytes", deletableVolumes}}));
+  }
+  if (volumesLinked > 0) {
+    findings.push_back(message("disk_docker_volumes_linked", {{"count", volumesLinked}}));
   }
   if (danglingImages > 0) {
     findings.push_back(message("disk_docker_dangling", {{"count", danglingImages}}));
@@ -453,6 +541,15 @@ json checkDocker(const json&) {
                                          {"size", "bytes"},
                                          {"reclaimable", "bytes"}},
                                         rows)});
+  if (!orphanRows.empty()) {
+    blocks.push_back(tableBlock("orphanVolumes",
+                                {{"name", "text"},
+                                 {"created", "date"},
+                                 {"size", "bytes"},
+                                 {"where", "text"},
+                                 {"effect", "text"}},
+                                orphanRows));
+  }
   if (!stopped.empty()) {
     blocks.push_back(tableBlock("stoppedContainers", {{"name", "text"}, {"image", "text"}, {"status", "text"}}, stopped));
   }

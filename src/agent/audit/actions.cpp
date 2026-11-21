@@ -65,6 +65,22 @@ bool isContainerName(const std::string& value) {
   return std::regex_match(value, pattern);
 }
 
+bool isVolumeName(const std::string& value) {
+  if (value.empty() || value.size() > 255) return false;
+  if (!std::isalnum(static_cast<unsigned char>(value.front()))) return false;
+  return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+    return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '-';
+  });
+}
+
+bool isDanglingVolume(const std::string& name) {
+  const auto listed = runCommand({"docker", "volume", "ls", "-qf", "dangling=true"}, 60);
+  for (const auto& line : splitLines(listed.out)) {
+    if (trim(line) == name) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 json runAction(const std::string& actionId, const json& params) {
@@ -74,6 +90,13 @@ json runAction(const std::string& actionId, const json& params) {
   if (actionId == "docker_builder_prune") return runDocker({"builder", "prune", "-af"});
   if (actionId == "docker_containers_prune") return runDocker({"container", "prune", "-f"});
   if (actionId == "docker_volumes_prune") return runDocker({"volume", "prune", "-f"});
+  if (actionId == "docker_volume_rm" || actionId == "docker_volume_unlink") {
+    const auto name = target.is_object() ? target.value("name", std::string{}) : std::string{};
+    if (!isVolumeName(name)) throw std::invalid_argument("Invalid volume name");
+    // A volume attached while the report was open must not be removed.
+    if (!isDanglingVolume(name)) throw std::invalid_argument("Volume is in use or does not exist");
+    return runDocker({"volume", "rm", name});
+  }
 
   if (actionId == "container_log_truncate") {
     const auto id = target.is_object() ? target.value("id", std::string{}) : std::string{};
