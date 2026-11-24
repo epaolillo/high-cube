@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -36,6 +37,8 @@ public:
   std::vector<ProcessInfo> sample();
   CpuBreakdown breakdown() const { return breakdown_; }
   int cores() const { return cores_; }
+  // Total jiffies across all CPUs between the last two samples. Used to convert cgroup usec.
+  unsigned long long lastDeltaTotal() const { return lastDeltaTotal_; }
 
 private:
   struct Previous {
@@ -44,6 +47,7 @@ private:
   };
   std::unordered_map<int, Previous> previous_;
   unsigned long long previousTotal_ = 0;
+  unsigned long long lastDeltaTotal_ = 0;
   unsigned long long previousParts_[5] = {0, 0, 0, 0, 0};
   CpuBreakdown breakdown_;
   int cores_ = 1;
@@ -54,7 +58,21 @@ void enrichProcess(ProcessInfo& process);
 nlohmann::json processToJson(const ProcessInfo& process);
 
 // Top processes by CPU and by RSS plus host CPU, load and memory context.
+// Uses the already-sampled process list so the same walk can feed attribution.
+std::string collectProcessSnapshotJson(ProcessSampler& sampler, std::vector<ProcessInfo>& processes);
+// Convenience wrapper that samples once.
 std::string collectProcessSnapshotJson(ProcessSampler& sampler);
+
+// Per-container CPU share of the machine, with top processes inside each container.
+// previousCgroupUsec stores the last usage_usec (or cpuacct.usage converted to usec) per
+// container id so the next call can compute a delta.
+std::string collectCpuAttributionJson(ProcessSampler& sampler, std::vector<ProcessInfo>& processes,
+                                      std::unordered_map<std::string, unsigned long long>& previousCgroupUsec);
+
+// Container names are hc-<application_id>-<replica_id>.
+bool parseReplicaIdFromName(const std::string& name, int64_t& replicaId);
+// Also returns application_id when the name matches.
+bool parseHcContainerName(const std::string& name, int64_t& applicationId, int64_t& replicaId);
 
 // 64-hex Docker container id from /proc/<pid>/cgroup, empty for host processes.
 std::string containerIdForPid(int pid);

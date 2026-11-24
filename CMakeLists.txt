@@ -49,6 +49,7 @@ set(ADMIN_SOURCES
   src/admin/db/database.cpp
   src/admin/db/migration_runner.cpp
   src/admin/db/repositories.cpp
+  src/admin/db/vpn_node_repository.cpp
   src/admin/auth/password.cpp
   src/admin/auth/jwt_service.cpp
   src/admin/auth/auth_middleware.cpp
@@ -70,6 +71,10 @@ set(ADMIN_SOURCES
   src/admin/services/autoscaler_service.cpp
   src/admin/services/supervisor_service.cpp
   src/admin/services/github_app_service.cpp
+  src/admin/services/vpn_service.cpp
+  src/admin/vpn/vpn_topology.cpp
+  src/admin/vpn/vpn_live_state.cpp
+  src/admin/vpn/device_script.cpp
   src/admin/github/github_http_client.cpp
   src/admin/github/github_app_auth.cpp
   src/admin/agents/agent_hub.cpp
@@ -121,6 +126,7 @@ set(AGENT_SOURCES
   src/agent/audit/resource_checks.cpp
   src/agent/audit/actions.cpp
   src/agent/logs/log_streamer.cpp
+  src/agent/vpn/vpn_manager.cpp
   src/agent/terminal/terminal_session.cpp
   src/agent/bootstrap/bootstrap.cpp
 )

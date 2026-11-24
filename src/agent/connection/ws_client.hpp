@@ -4,6 +4,7 @@
 #include "metrics/process_snapshot.hpp"
 #include "runtime/docker_runtime.hpp"
 #include "terminal/terminal_session.hpp"
+#include "vpn/vpn_manager.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -48,6 +49,8 @@ private:
   void startContainerMetrics();
   void reportContainerMetrics();
   void startProcessSnapshots();
+  void startVpnStatus();
+  void reportVpnStatus();
   void runQuickCommand(const ::highcube::QuickCommand& order);
   void doWrite();
   void closeTerminals();
@@ -71,6 +74,7 @@ private:
   net::steady_timer metricsTimer_;
   net::steady_timer containerMetricsTimer_;
   net::steady_timer processSnapshotTimer_;
+  net::steady_timer vpnStatusTimer_;
   std::deque<std::shared_ptr<std::string>> outgoing_;
   std::unordered_map<std::string, std::shared_ptr<TerminalSession>> terminals_;
   bool connected_ = false;
@@ -79,8 +83,13 @@ private:
   std::atomic<bool> containerReportRunning_{false};
   std::atomic<bool> processSnapshotRunning_{false};
   std::atomic<int> quickCommandsRunning_{0};
+  std::atomic<bool> vpnStatusRunning_{false};
+  // Shared with detached worker threads that run wg-quick and apt-get.
+  std::shared_ptr<VpnManager> vpn_ = std::make_shared<VpnManager>();
   // Only touched by the snapshot worker thread; processSnapshotRunning_ serializes it.
   ProcessSampler processSampler_;
+  // Last cgroup usage_usec per container id, for CPU attribution deltas.
+  std::unordered_map<std::string, unsigned long long> previousCgroupUsec_;
 };
 
 }  // namespace highcube::agent

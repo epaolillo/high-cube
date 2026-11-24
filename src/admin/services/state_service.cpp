@@ -44,9 +44,15 @@ nlohmann::json StateService::dashboard(const ListQuery& servers, const ListQuery
   auto serverPage = ServerService(ctx_).list(servers);
   if (serverPage.contains("rows") && serverPage["rows"].is_array()) {
     ServerService snapshots(ctx_);
+    const auto vpn = VpnService(ctx_).serverIndicators();
     for (auto& row : serverPage["rows"]) {
       if (row.contains("id") && row["id"].is_number_integer()) {
-        row["metrics"] = snapshots.snapshot(row["id"].get<int64_t>());
+        const auto id = row["id"].get<int64_t>();
+        row["metrics"] = snapshots.snapshot(id);
+        const auto key = std::to_string(id);
+        row["vpn"] = vpn.contains(key)
+                         ? vpn[key]
+                         : nlohmann::json{{"member", false}, {"connected", false}};
       }
     }
   }

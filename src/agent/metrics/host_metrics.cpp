@@ -7,8 +7,10 @@
 
 #include <cstdio>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace highcube::agent {
@@ -93,6 +95,67 @@ nlohmann::json collectGpu() {
   return {{"present", true}, {"gpus", gpus}};
 }
 
+// Physical cores and hardware threads. They do not change while the agent runs.
+nlohmann::json cpuInfo() {
+  static const nlohmann::json info = [] {
+    std::ifstream in("/proc/cpuinfo");
+    std::string line;
+    std::string physicalId;
+    int threads = 0;
+    std::set<std::pair<std::string, std::string>> cores;
+    while (std::getline(in, line)) {
+      const auto colon = line.find(':');
+      if (colon == std::string::npos) {
+        continue;
+      }
+      const auto key = trim(line.substr(0, colon));
+      const auto value = trim(line.substr(colon + 1));
+      if (key == "processor") {
+        ++threads;
+        physicalId.clear();
+      } else if (key == "physical id") {
+        physicalId = value;
+      } else if (key == "core id") {
+        cores.insert({physicalId, value});
+      }
+    }
+    // Some VMs and ARM boards omit core ids: count every thread as a core.
+    const int coreCount = cores.empty() ? threads : static_cast<int>(cores.size());
+    return nlohmann::json{{"cores", coreCount}, {"threads", threads}};
+  }();
+  return info;
+}
+
+// Byte counters of the host's real interfaces. Loopback, Docker bridges, veth pairs
+// and tunnels are skipped: their traffic also crosses a physical interface.
+nlohmann::json networkCounters() {
+  std::ifstream in("/proc/net/dev");
+  std::string line;
+  unsigned long long rx = 0;
+  unsigned long long tx = 0;
+  while (std::getline(in, line)) {
+    const auto colon = line.find(':');
+    if (colon == std::string::npos) {
+      continue;
+    }
+    const auto name = trim(line.substr(0, colon));
+    const auto startsWith = [&name](const char* prefix) { return name.rfind(prefix, 0) == 0; };
+    if (name == "lo" || startsWith("veth") || startsWith("docker") || startsWith("br-") ||
+        startsWith("virbr") || startsWith("wg") || startsWith("hc-vpn") || startsWith("tun") ||
+        startsWith("tailscale")) {
+      continue;
+    }
+    std::istringstream fields(line.substr(colon + 1));
+    unsigned long long values[9] = {};
+    for (auto& value : values) {
+      fields >> value;
+    }
+    rx += values[0];
+    tx += values[8];
+  }
+  return {{"rxBytes", rx}, {"txBytes", tx}};
+}
+
 }  // namespace
 
 std::string collectHostMetricsJson() {
@@ -133,6 +196,15 @@ std::string collectHostMetricsJson() {
     }
   }
   j["gpu"] = collectGpu();
+  {
+    // Also the clock for network rates: precise to 10 ms, unlike the storage timestamp.
+    std::ifstream in("/proc/uptime");
+    double uptime = 0;
+    in >> uptime;
+    j["uptimeSeconds"] = uptime;
+  }
+  j["cpuInfo"] = cpuInfo();
+  j["network"] = networkCounters();
   return j.dump();
 }
 

@@ -12,7 +12,10 @@ import api from '../api/client';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { type AnalysisRequest, QuickCommandsPanel } from '../components/serverAudit/QuickCommandsPanel';
+import { ContainerCpuChart } from '../components/serverMetrics/ContainerCpuChart';
 import { connectTerminal, type TerminalMode, type TerminalTransport } from '../terminal/transport';
+import { useAuth } from '../auth/AuthContext';
+import { ServerVpnModal } from '../vpn/ServerVpnModal';
 import '@xterm/xterm/css/xterm.css';
 
 dayjs.extend(relativeTime);
@@ -389,6 +392,8 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
   const [rotating, setRotating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
+  const [vpnOpen, setVpnOpen] = useState(false);
+  const { isAdmin } = useAuth();
   const [terminalMode, setTerminalMode] = useState<TerminalMode>();
   const [consoleTab, setConsoleTab] = useState<'console' | 'quickCommands'>('console');
   const [analysisRequest, setAnalysisRequest] = useState<AnalysisRequest>();
@@ -582,8 +587,17 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           <Button onClick={() => confirmRegenerateToken(t, server.name, regenerateToken)} loading={rotating}>
             {t('regenerateToken')}
           </Button>
+          {isAdmin && <Button onClick={() => setVpnOpen(true)}>{t('vpn')}</Button>}
         </div>
       </div>
+      {isAdmin && (
+        <ServerVpnModal
+          serverId={Number(id)}
+          serverName={server.name}
+          open={vpnOpen}
+          onClose={() => setVpnOpen(false)}
+        />
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <Segmented
@@ -604,6 +618,11 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           color="#635BFF"
           unit="%"
           onSelectWindow={server.status === 'online' ? (from, to) => requestAnalysis('cpu', from, to) : undefined}
+        />
+        <ContainerCpuChart
+          serverId={id}
+          range={range}
+          rangeMinutes={RANGES.find((item) => item.id === range)?.minutes ?? 60}
         />
         <MetricChart
           title={t('memory')}

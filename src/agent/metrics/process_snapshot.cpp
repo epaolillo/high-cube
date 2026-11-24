@@ -6,11 +6,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -25,6 +28,81 @@ std::string readAll(const std::string& path) {
   std::stringstream buffer;
   buffer << in.rdbuf();
   return buffer.str();
+}
+
+bool isHexId(const std::string& value, std::size_t minLen = 12) {
+  if (value.size() < minLen) {
+    return false;
+  }
+  return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+    return std::isxdigit(ch) && !std::isupper(ch);
+  });
+}
+
+// Full and short container id -> name from `docker ps`. Refreshed at most once a minute.
+std::unordered_map<std::string, std::string> dockerNameMap() {
+  static std::mutex mutex;
+  static std::unordered_map<std::string, std::string> cache;
+  static std::chrono::steady_clock::time_point loadedAt{};
+  std::lock_guard lock(mutex);
+  const auto now = std::chrono::steady_clock::now();
+  if (!cache.empty() && now - loadedAt < std::chrono::seconds(45)) {
+    return cache;
+  }
+  cache.clear();
+  FILE* pipe = ::popen("docker ps --no-trunc --format '{{.ID}}|{{.Names}}' 2>/dev/null", "r");
+  if (!pipe) {
+    return cache;
+  }
+  char buffer[512];
+  std::string out;
+  while (std::fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    out += buffer;
+  }
+  ::pclose(pipe);
+  std::istringstream in(out);
+  std::string line;
+  while (std::getline(in, line)) {
+    while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+      line.pop_back();
+    }
+    const auto sep = line.find('|');
+    if (sep == std::string::npos || sep == 0) {
+      continue;
+    }
+    const auto id = line.substr(0, sep);
+    auto name = line.substr(sep + 1);
+    if (!name.empty() && name.front() == '/') {
+      name.erase(name.begin());
+    }
+    if (id.empty() || name.empty()) {
+      continue;
+    }
+    cache[id] = name;
+    if (id.size() >= 12) {
+      cache[id.substr(0, 12)] = name;
+    }
+  }
+  loadedAt = now;
+  return cache;
+}
+
+std::string cgroupDirForId(const std::string& id) {
+  const std::vector<std::string> candidates = {
+      "/sys/fs/cgroup/system.slice/docker-" + id + ".scope",
+      "/sys/fs/cgroup/docker/" + id,
+      "/sys/fs/cgroup/cpu,cpuacct/docker/" + id,
+      "/sys/fs/cgroup/cpuacct/docker/" + id,
+      "/sys/fs/cgroup/cpu,cpuacct/system.slice/docker-" + id + ".scope",
+      "/sys/fs/cgroup/cpuacct/system.slice/docker-" + id + ".scope",
+  };
+  for (const auto& dir : candidates) {
+    std::error_code ec;
+    if (fs::exists(dir, ec)) {
+      return dir;
+    }
+  }
+  return "";
 }
 
 struct StatFields {
@@ -84,15 +162,29 @@ std::string userName(uid_t uid) {
   return name;
 }
 
-}  // namespace
-
-unsigned long long processStartTicks(int pid) {
-  const auto fields = readStat(pid);
-  return fields.ok ? fields.start : 0;
-}
-
-std::string containerIdForPid(int pid) {
-  const auto text = readAll("/proc/" + std::to_string(pid) + "/cgroup");
+// Extract a Docker/containerd/podman id from a cgroup file body.
+std::string extractContainerId(const std::string& text) {
+  // Prefer well-known prefixes so we do not grab unrelated 64-hex hashes.
+  const char* markers[] = {"docker-", "cri-containerd-", "libpod-", "crio-", "/docker/", "/containers/"};
+  for (const char* marker : markers) {
+    std::size_t pos = 0;
+    const std::string needle = marker;
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
+      const std::size_t start = pos + needle.size();
+      std::size_t end = start;
+      while (end < text.size() && std::isxdigit(static_cast<unsigned char>(text[end])) &&
+             !std::isupper(static_cast<unsigned char>(text[end]))) {
+        ++end;
+      }
+      const auto len = end - start;
+      if (len == 64 || (len >= 12 && len <= 64 && (end >= text.size() || text[end] == '.' ||
+                                                  text[end] == '/' || text[end] == '\n'))) {
+        return text.substr(start, len == 64 ? 64 : len);
+      }
+      pos = start;
+    }
+  }
+  // Fallback: any standalone 64-hex run.
   int run = 0;
   for (std::size_t i = 0; i < text.size(); ++i) {
     const char ch = text[i];
@@ -111,6 +203,153 @@ std::string containerIdForPid(int pid) {
   return "";
 }
 
+// Current CPU usage in microseconds for a container id. 0 when unavailable.
+unsigned long long cgroupUsageUsecForId(const std::string& id) {
+  if (id.empty()) {
+    return 0;
+  }
+  const auto dir = cgroupDirForId(id);
+  if (dir.empty()) {
+    return 0;
+  }
+  {
+    const auto text = readAll(dir + "/cpu.stat");
+    std::istringstream in(text);
+    std::string key;
+    unsigned long long value = 0;
+    while (in >> key >> value) {
+      if (key == "usage_usec") {
+        return value;
+      }
+    }
+  }
+  {
+    const auto text = readAll(dir + "/cpuacct.usage");
+    if (!text.empty()) {
+      try {
+        return std::stoull(text) / 1000ULL;
+      } catch (const std::exception&) {
+        return 0;
+      }
+    }
+  }
+  return 0;
+}
+
+double round2(double value) {
+  return std::round(value * 100.0) / 100.0;
+}
+
+struct ProcAgg {
+  double cpu = 0;
+  int pids = 0;
+  std::string cmd;
+  int samplePid = 0;
+};
+
+struct GroupAgg {
+  std::string kind;  // replica | docker | host
+  std::string containerId;
+  std::string container;
+  int64_t applicationId = 0;
+  int64_t replicaId = 0;
+  double cpu = 0;       // share of the machine (from cgroup when possible)
+  double procCpu = 0;   // sum of observed processes
+  bool fromCgroup = false;
+  std::unordered_map<std::string, ProcAgg> byName;
+};
+
+nlohmann::json procsToJson(std::unordered_map<std::string, ProcAgg>& byName, double otherCpu) {
+  std::vector<std::pair<std::string, ProcAgg>> ranked;
+  ranked.reserve(byName.size());
+  for (auto& [name, agg] : byName) {
+    ranked.emplace_back(name, std::move(agg));
+  }
+  std::sort(ranked.begin(), ranked.end(),
+            [](const auto& a, const auto& b) { return a.second.cpu > b.second.cpu; });
+
+  nlohmann::json procs = nlohmann::json::array();
+  double restCpu = 0;
+  int restPids = 0;
+  constexpr std::size_t kTop = 10;
+  for (std::size_t i = 0; i < ranked.size(); ++i) {
+    if (i < kTop) {
+      auto& agg = ranked[i].second;
+      if (!agg.cmd.empty()) {
+        // already filled
+      } else if (agg.samplePid > 0) {
+        ProcessInfo tmp;
+        tmp.pid = agg.samplePid;
+        tmp.name = ranked[i].first;
+        enrichProcess(tmp);
+        agg.cmd = tmp.cmd;
+      }
+      if (agg.cmd.size() > 120) {
+        agg.cmd.resize(120);
+      }
+      procs.push_back({{"name", ranked[i].first},
+                       {"cpu", round2(agg.cpu)},
+                       {"pids", agg.pids},
+                       {"cmd", agg.cmd}});
+    } else {
+      restCpu += ranked[i].second.cpu;
+      restPids += ranked[i].second.pids;
+    }
+  }
+  restCpu += otherCpu;
+  if (restCpu > 0.005 || restPids > 0) {
+    procs.push_back({{"name", "other"},
+                     {"cpu", round2(restCpu)},
+                     {"pids", restPids},
+                     {"cmd", ""}});
+  }
+  return procs;
+}
+
+}  // namespace
+
+bool parseReplicaIdFromName(const std::string& name, int64_t& replicaId) {
+  int64_t applicationId = 0;
+  return parseHcContainerName(name, applicationId, replicaId);
+}
+
+bool parseHcContainerName(const std::string& name, int64_t& applicationId, int64_t& replicaId) {
+  std::string bare = name;
+  if (!bare.empty() && bare.front() == '/') {
+    bare.erase(bare.begin());
+  }
+  if (bare.rfind("hc-", 0) != 0) {
+    return false;
+  }
+  const auto lastDash = bare.rfind('-');
+  if (lastDash == std::string::npos || lastDash <= 2) {
+    return false;
+  }
+  const auto midDash = bare.rfind('-', lastDash - 1);
+  if (midDash == std::string::npos || midDash < 2) {
+    return false;
+  }
+  try {
+    std::size_t appIdx = 0;
+    std::size_t repIdx = 0;
+    applicationId = std::stoll(bare.substr(midDash + 1, lastDash - midDash - 1), &appIdx);
+    replicaId = std::stoll(bare.substr(lastDash + 1), &repIdx);
+    return appIdx == lastDash - midDash - 1 && repIdx == bare.size() - lastDash - 1 &&
+           applicationId > 0 && replicaId > 0;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+unsigned long long processStartTicks(int pid) {
+  const auto fields = readStat(pid);
+  return fields.ok ? fields.start : 0;
+}
+
+std::string containerIdForPid(int pid) {
+  return extractContainerId(readAll("/proc/" + std::to_string(pid) + "/cgroup"));
+}
+
 std::string containerNameForId(const std::string& id) {
   if (id.empty()) {
     return "";
@@ -120,18 +359,43 @@ std::string containerNameForId(const std::string& id) {
   {
     std::lock_guard lock(mutex);
     const auto it = cache.find(id);
-    if (it != cache.end()) {
+    if (it != cache.end() && !isHexId(it->second)) {
       return it->second;
     }
   }
-  std::string name = id.substr(0, 12);
-  const auto config = nlohmann::json::parse(
-      readAll("/var/lib/docker/containers/" + id + "/config.v2.json"), nullptr, false);
-  if (config.is_object() && config.contains("Name") && config.at("Name").is_string()) {
-    name = config.at("Name").get<std::string>();
-    if (!name.empty() && name.front() == '/') {
-      name.erase(name.begin());
+  std::string name;
+  // Prefer docker ps: config.v2.json is missing on some containerd-backed installs.
+  const auto names = dockerNameMap();
+  auto it = names.find(id);
+  if (it == names.end() && id.size() >= 12) {
+    it = names.find(id.substr(0, 12));
+  }
+  if (it != names.end()) {
+    name = it->second;
+  }
+  if (name.empty() || isHexId(name)) {
+    std::string configPath = "/var/lib/docker/containers/" + id + "/config.v2.json";
+    if (id.size() != 64) {
+      // Short ids: scan the containers dir for a matching prefix.
+      std::error_code ec;
+      for (const auto& entry : fs::directory_iterator("/var/lib/docker/containers", ec)) {
+        const auto full = entry.path().filename().string();
+        if (full.rfind(id, 0) == 0 && full.size() == 64) {
+          configPath = entry.path().string() + "/config.v2.json";
+          break;
+        }
+      }
     }
+    const auto config = nlohmann::json::parse(readAll(configPath), nullptr, false);
+    if (config.is_object() && config.contains("Name") && config.at("Name").is_string()) {
+      name = config.at("Name").get<std::string>();
+      if (!name.empty() && name.front() == '/') {
+        name.erase(name.begin());
+      }
+    }
+  }
+  if (name.empty()) {
+    name = id.substr(0, std::min<std::size_t>(12, id.size()));
   }
   std::lock_guard lock(mutex);
   if (cache.size() > 2000) {
@@ -207,6 +471,7 @@ std::vector<ProcessInfo> ProcessSampler::sample() {
   const unsigned long long grouped[5] = {parts[0] + parts[1], parts[2] + parts[5] + parts[6], parts[4],
                                          parts[7], parts[3]};
   const auto deltaTotal = total > previousTotal_ ? total - previousTotal_ : 0;
+  lastDeltaTotal_ = deltaTotal;
   if (previousTotal_ > 0 && deltaTotal > 0) {
     auto share = [&](int index) {
       const auto delta = grouped[index] >= previousParts_[index] ? grouped[index] - previousParts_[index] : 0;
@@ -253,6 +518,10 @@ std::vector<ProcessInfo> ProcessSampler::sample() {
 
 std::string collectProcessSnapshotJson(ProcessSampler& sampler) {
   auto processes = sampler.sample();
+  return collectProcessSnapshotJson(sampler, processes);
+}
+
+std::string collectProcessSnapshotJson(ProcessSampler& sampler, std::vector<ProcessInfo>& processes) {
   std::vector<std::size_t> byCpu(processes.size());
   for (std::size_t i = 0; i < processes.size(); ++i) {
     byCpu[i] = i;
@@ -307,6 +576,171 @@ std::string collectProcessSnapshotJson(ProcessSampler& sampler) {
     j["mem"] = mem;
   }
   j["procs"] = procs;
+  return j.dump();
+}
+
+std::string collectCpuAttributionJson(
+    ProcessSampler& sampler, std::vector<ProcessInfo>& processes,
+    std::unordered_map<std::string, unsigned long long>& previousCgroupUsec) {
+  const auto deltaTotal = sampler.lastDeltaTotal();
+  const long clkTck = std::max(1L, ::sysconf(_SC_CLK_TCK));
+  // Sum the non-idle shares. Using 100-idle turns the default (all-zero) breakdown into a
+  // fake 100% host bar on the first sample before deltas exist.
+  const auto parts = sampler.breakdown();
+  const double busy = std::max(0.0, parts.user + parts.system + parts.iowait + parts.steal);
+  if (deltaTotal == 0) {
+    nlohmann::json j;
+    j["cores"] = sampler.cores();
+    j["intervalSec"] = 60;
+    j["busy"] = 0;
+    j["groups"] = nlohmann::json::array();
+    return j.dump();
+  }
+
+  // Warm the docker name cache once per sample so hc-* names resolve even without config.v2.json.
+  const auto names = dockerNameMap();
+
+  auto canonicalId = [&](const std::string& id) -> std::string {
+    if (id.size() == 64) {
+      return id;
+    }
+    if (id.size() >= 12) {
+      for (const auto& [full, _] : names) {
+        if (full.size() == 64 && full.rfind(id, 0) == 0) {
+          return full;
+        }
+      }
+    }
+    return id;
+  };
+
+  // Keyed by container id, or "" for host processes.
+  std::unordered_map<std::string, GroupAgg> groups;
+  std::unordered_map<std::string, unsigned long long> nextCgroup;
+
+  for (auto& process : processes) {
+    if (process.cpuPercent <= 0) {
+      continue;
+    }
+    const auto containerId = canonicalId(containerIdForPid(process.pid));
+    auto& group = groups[containerId];
+    if (group.containerId.empty() && !containerId.empty()) {
+      group.containerId = containerId;
+      group.container = containerNameForId(containerId);
+      int64_t applicationId = 0;
+      int64_t replicaId = 0;
+      if (parseHcContainerName(group.container, applicationId, replicaId)) {
+        group.kind = "replica";
+        group.applicationId = applicationId;
+        group.replicaId = replicaId;
+      } else {
+        group.kind = "docker";
+      }
+    } else if (containerId.empty() && group.kind.empty()) {
+      group.kind = "host";
+    }
+    group.procCpu += process.cpuPercent;
+    auto& agg = group.byName[process.name];
+    agg.cpu += process.cpuPercent;
+    agg.pids += 1;
+    if (agg.samplePid == 0) {
+      agg.samplePid = process.pid;
+    }
+  }
+
+  // Prefer cgroup totals so short-lived processes inside a container still count.
+  for (auto& [containerId, group] : groups) {
+    if (containerId.empty()) {
+      continue;
+    }
+    const auto usage = cgroupUsageUsecForId(containerId);
+    if (usage == 0) {
+      continue;
+    }
+    nextCgroup[containerId] = usage;
+    const auto prev = previousCgroupUsec.find(containerId);
+    if (prev == previousCgroupUsec.end() || usage < prev->second) {
+      continue;
+    }
+    const auto deltaUsec = usage - prev->second;
+    const double windowUsec =
+        static_cast<double>(deltaTotal) * 1'000'000.0 / static_cast<double>(clkTck);
+    if (windowUsec <= 0) {
+      continue;
+    }
+    group.cpu = 100.0 * static_cast<double>(deltaUsec) / windowUsec;
+    group.fromCgroup = true;
+  }
+  previousCgroupUsec = std::move(nextCgroup);
+
+  double containerSum = 0;
+  for (auto& [containerId, group] : groups) {
+    if (containerId.empty()) {
+      continue;
+    }
+    if (!group.fromCgroup) {
+      group.cpu = group.procCpu;
+    }
+    containerSum += group.cpu;
+  }
+
+  auto& host = groups[""];
+  host.kind = "host";
+  host.cpu = std::max(0.0, busy - containerSum);
+  // Keep observed host process sum for the pie chart; otherCpu covers the gap.
+  const double hostProcCpu = host.procCpu;
+
+  nlohmann::json outGroups = nlohmann::json::array();
+  for (auto& [containerId, group] : groups) {
+    if (group.kind.empty()) {
+      continue;
+    }
+    // Skip empty host and empty docker leftovers.
+    if (group.cpu < 0.005 && group.procCpu < 0.005 && group.byName.empty()) {
+      continue;
+    }
+    const double otherCpu =
+        containerId.empty() ? std::max(0.0, group.cpu - hostProcCpu)
+                            : std::max(0.0, group.cpu - group.procCpu);
+    nlohmann::json item = {{"kind", group.kind},
+                           {"cpu", round2(group.cpu)},
+                           {"otherCpu", round2(otherCpu)},
+                           {"procs", procsToJson(group.byName, 0)}};
+    // Fold short-lived remainder into the "other" process slice when present.
+    if (otherCpu > 0.005) {
+      auto& procs = item["procs"];
+      bool found = false;
+      for (auto& proc : procs) {
+        if (proc.value("name", "") == "other") {
+          proc["cpu"] = round2(proc.value("cpu", 0.0) + otherCpu);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        procs.push_back({{"name", "other"}, {"cpu", round2(otherCpu)}, {"pids", 0}, {"cmd", ""}});
+      }
+      // Keep otherCpu as an explicit field for the UI label.
+    }
+    if (!containerId.empty()) {
+      item["container"] = group.container;
+    }
+    if (group.kind == "replica") {
+      item["replicaId"] = group.replicaId;
+      item["applicationId"] = group.applicationId;
+    }
+    outGroups.push_back(std::move(item));
+  }
+
+  std::sort(outGroups.begin(), outGroups.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
+    return a.value("cpu", 0.0) > b.value("cpu", 0.0);
+  });
+
+  nlohmann::json j;
+  j["cores"] = sampler.cores();
+  j["intervalSec"] = 60;
+  j["busy"] = round2(busy);
+  j["groups"] = std::move(outGroups);
   return j.dump();
 }
 

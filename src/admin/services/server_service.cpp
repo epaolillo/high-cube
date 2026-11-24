@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <iomanip>
+#include <map>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -45,6 +48,12 @@ struct HostSample {
   double gpuMemoryTotalMb = 0;
   int gpuCount = 0;
   std::string gpuName;
+  int cpuCores = 0;
+  int cpuThreads = 0;
+  double uptimeSeconds = 0;
+  bool networkOk = false;
+  double rxBytes = 0;
+  double txBytes = 0;
 };
 
 double counter(const nlohmann::json& cpu, const char* key) {
@@ -109,7 +118,40 @@ HostSample parseSample(const MetricRow& row) {
       sample.gpuPercent = utilization / static_cast<double>(sample.gpuCount);
     }
   }
+  if (payload.contains("cpuInfo") && payload.at("cpuInfo").is_object()) {
+    const auto& info = payload.at("cpuInfo");
+    sample.cpuCores = info.value("cores", 0);
+    sample.cpuThreads = info.value("threads", 0);
+  }
+  if (payload.contains("uptimeSeconds") && payload.at("uptimeSeconds").is_number()) {
+    sample.uptimeSeconds = payload.at("uptimeSeconds").get<double>();
+  }
+  if (payload.contains("network") && payload.at("network").is_object()) {
+    const auto& network = payload.at("network");
+    sample.rxBytes = network.value("rxBytes", 0.0);
+    sample.txBytes = network.value("txBytes", 0.0);
+    sample.networkOk = true;
+  }
   return sample;
+}
+
+struct NetworkRate {
+  double rx = 0;
+  double tx = 0;
+};
+
+// Bytes per second between two samples, timed by the host's uptime clock. Empty when
+// the samples cannot be compared (old agent, reboot, counter reset).
+std::optional<NetworkRate> networkRate(const HostSample& previous, const HostSample& current) {
+  if (!previous.networkOk || !current.networkOk) {
+    return std::nullopt;
+  }
+  const double elapsed = current.uptimeSeconds - previous.uptimeSeconds;
+  if (elapsed <= 0 || current.rxBytes < previous.rxBytes || current.txBytes < previous.txBytes) {
+    return std::nullopt;
+  }
+  return NetworkRate{(current.rxBytes - previous.rxBytes) / elapsed,
+                     (current.txBytes - previous.txBytes) / elapsed};
 }
 
 double cpuPercent(const CpuCounters& previous, const CpuCounters& current) {
@@ -159,6 +201,13 @@ nlohmann::json latestJson(const HostSample& sample, std::optional<double> cpu) {
   }
   if (!sample.gpuName.empty()) {
     body["gpuName"] = sample.gpuName;
+  }
+  if (sample.cpuThreads > 0) {
+    body["cpuCores"] = sample.cpuCores;
+    body["cpuThreads"] = sample.cpuThreads;
+  }
+  if (sample.uptimeSeconds > 0) {
+    body["uptimeSeconds"] = static_cast<long long>(sample.uptimeSeconds);
   }
   return body;
 }
@@ -405,6 +454,8 @@ void ServerService::remove(int64_t id) {
   for (const auto& replica : ctx_.repos->listReplicasForServer(id)) {
     applicationIds.push_back(replica.applicationId);
   }
+  // Before the disconnect, so the agent still receives the order to drop the interface.
+  VpnService(ctx_).onServerRemoved(id);
   if (ctx_.agentHub) {
     ctx_.agentHub->disconnectServer(id);
   }
@@ -440,26 +491,367 @@ nlohmann::json ServerService::metrics(int64_t id, const std::string& from, const
 }
 
 nlohmann::json ServerService::snapshot(int64_t id) {
-  const auto rows = ctx_.repos->listRecentServerMetrics(id, 2);
+  // One sample per second: enough rows for a short network sparkline.
+  constexpr int kTrafficPoints = 20;
+  const auto rows = ctx_.repos->listRecentServerMetrics(id, kTrafficPoints + 1);
   if (rows.empty()) {
     return nlohmann::json::object();
   }
   // listRecentServerMetrics returns newest first.
-  const auto current = parseSample(rows.front());
+  std::vector<HostSample> samples;
+  samples.reserve(rows.size());
+  for (auto it = rows.rbegin(); it != rows.rend(); ++it) {
+    samples.push_back(parseSample(*it));
+  }
+  const auto& current = samples.back();
   std::optional<double> cpu;
-  if (rows.size() >= 2) {
-    const auto previous = parseSample(rows[1]);
+  if (samples.size() >= 2) {
+    const auto& previous = samples[samples.size() - 2];
     if (previous.cpu.ok && current.cpu.ok) {
       cpu = cpuPercent(previous.cpu, current.cpu);
     }
   }
-  return latestJson(current, cpu);
+  auto body = latestJson(current, cpu);
+
+  nlohmann::json rxHistory = nlohmann::json::array();
+  nlohmann::json txHistory = nlohmann::json::array();
+  for (std::size_t i = 1; i < samples.size(); ++i) {
+    if (const auto rate = networkRate(samples[i - 1], samples[i])) {
+      rxHistory.push_back(rate->rx);
+      txHistory.push_back(rate->tx);
+    }
+  }
+  if (!rxHistory.empty()) {
+    body["rxBytesPerSec"] = rxHistory.back();
+    body["txBytesPerSec"] = txHistory.back();
+    body["rxHistory"] = rxHistory;
+    body["txHistory"] = txHistory;
+  }
+  return body;
 }
 
 nlohmann::json ServerService::overview(int64_t id) {
   const auto to = std::chrono::system_clock::now();
   const auto from = to - std::chrono::minutes(5);
   return {{"server", get(id)}, {"metrics", metrics(id, isoUtc(from), isoUtc(to))}};
+}
+
+namespace {
+
+long long parseIsoMs(const std::string& value) {
+  std::tm tm{};
+  std::istringstream in(value);
+  in >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+  if (in.fail()) {
+    return 0;
+  }
+  return static_cast<long long>(timegm(&tm)) * 1000;
+}
+
+std::string isoUtcMs(long long ms) {
+  const std::time_t t = static_cast<std::time_t>(ms / 1000);
+  std::tm tm{};
+  gmtime_r(&t, &tm);
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << ".000Z";
+  return oss.str();
+}
+
+int bucketSecForWindow(long long fromMs, long long toMs) {
+  const long long spanSec = std::max(1LL, (toMs - fromMs) / 1000);
+  if (spanSec <= 15 * 60) {
+    return 60;
+  }
+  if (spanSec <= 60 * 60) {
+    return 300;
+  }
+  if (spanSec <= 6 * 60 * 60) {
+    return 900;
+  }
+  if (spanSec <= 24 * 60 * 60) {
+    return 3600;
+  }
+  return 21600;
+}
+
+std::string chartGroupKey(const nlohmann::json& group) {
+  const auto kind = group.value("kind", "");
+  if (kind == "replica") {
+    return "replica:" + std::to_string(group.value("replicaId", 0LL));
+  }
+  if (kind == "docker") {
+    return "docker";
+  }
+  return "host";
+}
+
+std::string detailGroupKey(const nlohmann::json& group) {
+  const auto kind = group.value("kind", "");
+  if (kind == "replica") {
+    return "replica:" + std::to_string(group.value("replicaId", 0LL));
+  }
+  if (kind == "docker") {
+    return "docker:" + group.value("container", std::string("unknown"));
+  }
+  return "host";
+}
+
+double round2(double value) {
+  return std::round(value * 100.0) / 100.0;
+}
+
+}  // namespace
+
+nlohmann::json ServerService::cpuAttribution(int64_t id, const std::string& from, const std::string& to) {
+  (void)get(id);
+  const long long fromMs = parseIsoMs(from);
+  const long long toMs = parseIsoMs(to);
+  if (fromMs <= 0 || toMs <= 0 || toMs <= fromMs) {
+    throw std::invalid_argument("Invalid from/to range");
+  }
+  const int bucketSec = bucketSecForWindow(fromMs, toMs);
+  const long long bucketMs = static_cast<long long>(bucketSec) * 1000;
+
+  // Resolve application names for replicas that currently live on this server.
+  std::unordered_map<int64_t, int64_t> replicaToApp;
+  std::unordered_map<int64_t, std::string> appNames;
+  std::unordered_map<int64_t, int> appReplicaCount;
+  for (const auto& replica : ctx_.repos->listReplicasForServer(id)) {
+    replicaToApp[replica.id] = replica.applicationId;
+    appReplicaCount[replica.applicationId] += 1;
+    if (!appNames.count(replica.applicationId)) {
+      if (auto app = ctx_.repos->findApplicationById(replica.applicationId)) {
+        appNames[replica.applicationId] = app->name;
+      }
+    }
+  }
+
+  struct Acc {
+    double sum = 0;
+  };
+  struct BucketAcc {
+    int samples = 0;
+    std::unordered_map<std::string, Acc> values;
+  };
+  std::map<long long, BucketAcc> buckets;
+  std::unordered_map<std::string, nlohmann::json> groupMeta;
+
+  for (const auto& row : ctx_.repos->listCpuAttribution(id, from, to)) {
+    const long long at = parseIsoMs(row.collectedAt);
+    if (at <= 0) {
+      continue;
+    }
+    const long long bucketStart = fromMs + ((at - fromMs) / bucketMs) * bucketMs;
+    if (bucketStart < fromMs || bucketStart >= toMs) {
+      continue;
+    }
+    const auto payload =
+        nlohmann::json::parse(row.payloadJson.empty() ? "{}" : row.payloadJson, nullptr, false);
+    if (!payload.is_object() || !payload.contains("groups") || !payload.at("groups").is_array()) {
+      continue;
+    }
+    auto& bucket = buckets[bucketStart];
+    bucket.samples += 1;
+    for (const auto& group : payload.at("groups")) {
+      if (!group.is_object()) {
+        continue;
+      }
+      const auto key = chartGroupKey(group);
+      bucket.values[key].sum += group.value("cpu", 0.0);
+      if (!groupMeta.count(key)) {
+        nlohmann::json meta = {{"key", key}, {"kind", group.value("kind", "host")}};
+        if (key.rfind("replica:", 0) == 0) {
+          const auto replicaId = group.value("replicaId", 0LL);
+          const auto applicationId = group.value("applicationId", 0LL);
+          meta["replicaId"] = replicaId;
+          meta["applicationId"] = applicationId;
+          std::string label = group.value("container", std::string("replica"));
+          const auto appId = applicationId > 0
+                                 ? applicationId
+                                 : (replicaToApp.count(replicaId) ? replicaToApp[replicaId] : 0);
+          if (appId > 0 && appNames.count(appId)) {
+            label = appNames[appId];
+            if (appReplicaCount[appId] > 1) {
+              label += " #" + std::to_string(replicaId);
+            }
+          } else if (appId > 0 && !replicaToApp.count(replicaId)) {
+            // Historical replica: still try the application id from the payload.
+            if (auto app = ctx_.repos->findApplicationById(appId)) {
+              label = app->name;
+              appNames[appId] = label;
+            }
+          }
+          meta["label"] = label;
+        } else if (key == "docker") {
+          meta["label"] = "Other Docker containers";
+        } else {
+          meta["label"] = "Host (outside containers)";
+        }
+        groupMeta[key] = std::move(meta);
+      }
+    }
+  }
+
+  nlohmann::json groups = nlohmann::json::array();
+  for (auto& [_, meta] : groupMeta) {
+    groups.push_back(std::move(meta));
+  }
+  std::sort(groups.begin(), groups.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
+    return a.value("key", "") < b.value("key", "");
+  });
+
+  nlohmann::json outBuckets = nlohmann::json::array();
+  for (auto& [start, acc] : buckets) {
+    if (acc.samples <= 0) {
+      continue;
+    }
+    nlohmann::json values = nlohmann::json::object();
+    double total = 0;
+    for (const auto& [key, value] : acc.values) {
+      const double avg = value.sum / static_cast<double>(acc.samples);
+      values[key] = round2(avg);
+      total += avg;
+    }
+    outBuckets.push_back({{"from", isoUtcMs(start)},
+                          {"to", isoUtcMs(std::min(start + bucketMs, toMs))},
+                          {"total", round2(total)},
+                          {"values", std::move(values)}});
+  }
+
+  return {{"bucketSec", bucketSec}, {"groups", std::move(groups)}, {"buckets", std::move(outBuckets)}};
+}
+
+nlohmann::json ServerService::cpuAttributionProcesses(int64_t id, const std::string& from,
+                                                      const std::string& to) {
+  (void)get(id);
+  const long long fromMs = parseIsoMs(from);
+  const long long toMs = parseIsoMs(to);
+  if (fromMs <= 0 || toMs <= 0 || toMs <= fromMs) {
+    throw std::invalid_argument("Invalid from/to range");
+  }
+
+  std::unordered_map<int64_t, int64_t> replicaToApp;
+  std::unordered_map<int64_t, std::string> appNames;
+  std::unordered_map<int64_t, int> appReplicaCount;
+  for (const auto& replica : ctx_.repos->listReplicasForServer(id)) {
+    replicaToApp[replica.id] = replica.applicationId;
+    appReplicaCount[replica.applicationId] += 1;
+    if (!appNames.count(replica.applicationId)) {
+      if (auto app = ctx_.repos->findApplicationById(replica.applicationId)) {
+        appNames[replica.applicationId] = app->name;
+      }
+    }
+  }
+
+  struct ProcAcc {
+    double cpu = 0;
+    double pids = 0;
+    std::string cmd;
+  };
+  struct GroupAcc {
+    std::string kind;
+    std::string label;
+    int64_t applicationId = 0;
+    int64_t replicaId = 0;
+    double cpu = 0;
+    double otherCpu = 0;
+    int samples = 0;
+    std::unordered_map<std::string, ProcAcc> procs;
+  };
+  std::unordered_map<std::string, GroupAcc> groups;
+  int totalSamples = 0;
+
+  for (const auto& row : ctx_.repos->listCpuAttribution(id, from, to)) {
+    const auto payload =
+        nlohmann::json::parse(row.payloadJson.empty() ? "{}" : row.payloadJson, nullptr, false);
+    if (!payload.is_object() || !payload.contains("groups") || !payload.at("groups").is_array()) {
+      continue;
+    }
+    totalSamples += 1;
+    std::unordered_set<std::string> seen;
+    for (const auto& group : payload.at("groups")) {
+      if (!group.is_object()) {
+        continue;
+      }
+      const auto key = detailGroupKey(group);
+      auto& acc = groups[key];
+      if (acc.kind.empty()) {
+        acc.kind = group.value("kind", "host");
+        acc.replicaId = group.value("replicaId", 0LL);
+        acc.applicationId = group.value("applicationId", 0LL);
+        if (acc.kind == "replica") {
+          const auto appId = acc.applicationId > 0
+                                 ? acc.applicationId
+                                 : (replicaToApp.count(acc.replicaId) ? replicaToApp[acc.replicaId] : 0);
+          if (appId > 0 && appNames.count(appId)) {
+            acc.label = appNames[appId];
+            if (appReplicaCount[appId] > 1) {
+              acc.label += " #" + std::to_string(acc.replicaId);
+            }
+          } else if (appId > 0) {
+            if (auto app = ctx_.repos->findApplicationById(appId)) {
+              acc.label = app->name;
+            } else {
+              acc.label = group.value("container", std::string("replica"));
+            }
+          } else {
+            acc.label = group.value("container", std::string("replica"));
+          }
+        } else if (acc.kind == "docker") {
+          acc.label = group.value("container", std::string("docker"));
+        } else {
+          acc.label = "Host (outside containers)";
+        }
+      }
+      acc.cpu += group.value("cpu", 0.0);
+      acc.otherCpu += group.value("otherCpu", 0.0);
+      seen.insert(key);
+      if (group.contains("procs") && group.at("procs").is_array()) {
+        for (const auto& proc : group.at("procs")) {
+          if (!proc.is_object()) {
+            continue;
+          }
+          const auto name = proc.value("name", std::string("unknown"));
+          auto& p = acc.procs[name];
+          p.cpu += proc.value("cpu", 0.0);
+          p.pids += proc.value("pids", 0);
+          if (p.cmd.empty()) {
+            p.cmd = proc.value("cmd", "");
+          }
+        }
+      }
+    }
+    for (const auto& key : seen) {
+      groups[key].samples += 1;
+    }
+  }
+
+  nlohmann::json out = nlohmann::json::array();
+  const double denom = totalSamples > 0 ? static_cast<double>(totalSamples) : 1.0;
+  for (auto& [key, acc] : groups) {
+    nlohmann::json procs = nlohmann::json::array();
+    for (auto& [name, proc] : acc.procs) {
+      procs.push_back({{"name", name},
+                       {"cpu", round2(proc.cpu / denom)},
+                       {"pids", static_cast<int>(std::lround(proc.pids / denom))},
+                       {"cmd", proc.cmd}});
+    }
+    std::sort(procs.begin(), procs.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
+      return a.value("cpu", 0.0) > b.value("cpu", 0.0);
+    });
+    out.push_back({{"key", key},
+                   {"kind", acc.kind},
+                   {"label", acc.label},
+                   {"applicationId", acc.applicationId},
+                   {"replicaId", acc.replicaId},
+                   {"cpu", round2(acc.cpu / denom)},
+                   {"otherCpu", round2(acc.otherCpu / denom)},
+                   {"procs", std::move(procs)}});
+  }
+  std::sort(out.begin(), out.end(), [](const nlohmann::json& a, const nlohmann::json& b) {
+    return a.value("cpu", 0.0) > b.value("cpu", 0.0);
+  });
+  return {{"groups", std::move(out)}};
 }
 
 }  // namespace highcube::admin

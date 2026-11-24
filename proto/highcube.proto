@@ -27,6 +27,7 @@ enum MessageKind {
   CHECK_HOST_PORT = 13;
   DB_MANAGE = 14;
   QUICK_COMMAND = 15;
+  VPN_APPLY = 16;
 
   // Agent -> Admin
   REGISTER = 100;
@@ -43,6 +44,8 @@ enum MessageKind {
   QUICK_COMMAND_PROGRESS = 111;
   PROCESS_SNAPSHOT = 112;
   QUICK_COMMAND_RESULT = 113;
+  CPU_ATTRIBUTION = 114;
+  VPN_STATUS = 115;
 }
 
 message VolumeSpec {
@@ -263,4 +266,23 @@ message QuickCommandResult {
 message ProcessSnapshot {
   string payload_json = 1;
   int64 collected_at_unix_ms = 2;
+}
+
+// Agent -> Admin: CPU share of the machine attributed to each container and its top processes.
+message CpuAttribution {
+  string payload_json = 1;
+  int64 collected_at_unix_ms = 2;
+}
+
+// Admin -> Agent: desired state of the WireGuard interface (hub-and-spoke).
+// config_json: {"enabled": bool, "interface": "hc-vpn", "listenPort": int, "conf": "<wg-quick body>"}.
+// conf has no [Interface] line and no PrivateKey: the agent adds both from its local key.
+message VpnApply {
+  string config_json = 1;
+}
+
+// Agent -> Admin: VPN interface state, sent every few seconds while the server is a member.
+// payload_json: {"publicKey", "up", "lanIp", "dump" (peer lines of wg show dump), "error"}.
+message VpnStatus {
+  string payload_json = 1;
 }

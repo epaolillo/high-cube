@@ -94,6 +94,21 @@ int main(int argc, char** argv) {
     ctx.agentHub->setDeploymentService(ctx.deployments.get());
     ctx.agentHub->setProxy(ctx.proxy.get());
     ctx.agentHub->setGithubApps(ctx.githubApps.get());
+    ctx.vpnLive = std::make_shared<vpn::LiveState>();
+    // Remote replicas are proxied through the VPN while the tunnel to their server is up.
+    ctx.proxy->setAddressResolver(
+        [&ctx](const Server& server) { return VpnService(ctx).routingAddress(server.id); });
+    ctx.agentHub->setVpnHandlers(
+        [&ctx](int64_t serverId, const std::string& remoteIp) {
+          VpnService(ctx).onAgentRegistered(serverId, remoteIp);
+        },
+        [&ctx](int64_t serverId, const std::string& payloadJson, const std::string& remoteIp) {
+          try {
+            VpnService(ctx).onAgentStatus(serverId, payloadJson, remoteIp);
+          } catch (const std::exception& ex) {
+            spdlog::error("vpn status from server {} failed: {}", serverId, ex.what());
+          }
+        });
 
     auto terminalPolling =
         std::make_shared<HostTerminalPolling>(ioc, *ctx.agentHub, *ctx.auth, *ctx.repos);

@@ -35,6 +35,9 @@ public:
   void setServerId(int64_t id) { serverId_ = id; }
   const std::string& serverName() const { return serverName_; }
   void setServerName(std::string name) { serverName_ = std::move(name); }
+  // Source address of the agent: X-Real-IP from NGINX, else the socket peer.
+  const std::string& remoteIp() const { return remoteIp_; }
+  void setRemoteIp(std::string ip) { remoteIp_ = std::move(ip); }
 
 private:
   void doRead();
@@ -50,6 +53,7 @@ private:
   std::deque<std::shared_ptr<std::string>> outgoing_;
   int64_t serverId_ = 0;
   std::string serverName_;
+  std::string remoteIp_;
   bool writing_ = false;
   bool closed_ = false;
 };

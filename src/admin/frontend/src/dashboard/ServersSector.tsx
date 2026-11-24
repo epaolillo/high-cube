@@ -15,9 +15,11 @@ import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
 import { useDashboardState } from './DashboardState';
+import { ServerFooter, ServerSpecs, ServerTraffic, type ServerCardMetrics } from './ServerCardParts';
 import { useServerFilter } from './ServerFilter';
+import type { ServerVpnIndicator } from '../vpn/types';
 
-type ServerMetrics = {
+type ServerMetrics = ServerCardMetrics & {
   cpuPercent?: number;
   memoryUsedBytes?: number;
   memoryLimitBytes?: number;
@@ -37,6 +39,7 @@ type ServerRow = {
   icon?: string;
   lastSeenAt?: string;
   metrics?: ServerMetrics;
+  vpn?: ServerVpnIndicator;
 };
 
 function showAgentToken(t: (k: string) => string, token: string) {
@@ -189,7 +192,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
           <div className="hc-sector__empty">—</div>
         ) : (
           rows.map((s) => (
-            <div className="hc-row" key={s.id}>
+            <div className="hc-row hc-card" key={s.id}>
               <div className="hc-row__head">
                 {!readOnly && (
                   <input
@@ -216,29 +219,36 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                     </button>
                   </Tooltip>
                 )}
-                <span className="hc-row__title">
+                <span className="hc-card__ident">
                   <span className="hc-row__name" title={s.name}>
                     {s.name}
                   </span>
-                  {!readOnly && (
-                    <Tooltip title={s.status === 'online' ? t('updateAgent') : t('updateAgentOffline')}>
-                      <span>
-                        <button
-                          type="button"
-                          className="hc-iconbtn"
-                          disabled={s.status !== 'online'}
-                          onClick={() => updateAgent(s)}
-                        >
-                          <CloudDownloadOutlined />
-                        </button>
-                      </span>
-                    </Tooltip>
-                  )}
+                  {!readOnly &&
+                    (s.vpn?.routedAddress ? (
+                      <Tooltip title={t('serverIpViaVpn', { ip: s.ip })}>
+                        <span className="hc-card__ip" data-vpn="true">
+                          {s.vpn.routedAddress}
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      s.ip && <span className="hc-card__ip">{s.ip}</span>
+                    ))}
                 </span>
                 {!readOnly && (
                   <>
-                    <span className="hc-row__sub">{s.ip}</span>
                     <div className="hc-acts">
+                      <Tooltip title={s.status === 'online' ? t('updateAgent') : t('updateAgentOffline')}>
+                        <span>
+                          <button
+                            type="button"
+                            className="hc-iconbtn"
+                            disabled={s.status !== 'online'}
+                            onClick={() => updateAgent(s)}
+                          >
+                            <CloudDownloadOutlined />
+                          </button>
+                        </span>
+                      </Tooltip>
                       <Tooltip title={t('edit')}>
                         <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
                           <EditOutlined />
@@ -277,8 +287,10 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                   />
                 </Tooltip>
               </div>
+              <ServerSpecs metrics={s.metrics} />
               <div className="hc-row__metric">
                 <MetricDisplay
+                  showHeader={false}
                   cpuPercent={s.metrics?.cpuPercent}
                   memoryUsedBytes={s.metrics?.memoryUsedBytes}
                   memoryLimitBytes={s.metrics?.memoryLimitBytes}
@@ -291,6 +303,8 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                   status={s.status === 'online' ? 'running' : 'stopped'}
                 />
               </div>
+              <ServerTraffic metrics={s.metrics} online={s.status === 'online'} />
+              <ServerFooter vpn={s.vpn} metrics={s.metrics} online={s.status === 'online'} />
             </div>
           ))
         )}

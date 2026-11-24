@@ -191,6 +191,19 @@ void NginxProxy::ensureHttpChallengeSite(const std::string& hostname) {
   reload();
 }
 
+std::string NginxProxy::backendAddress(const Server& server) const {
+  if (addressResolver_) {
+    try {
+      if (auto address = addressResolver_(server); !address.empty()) {
+        return address;
+      }
+    } catch (const std::exception& ex) {
+      spdlog::warn("address resolver failed for {}: {}", server.name, ex.what());
+    }
+  }
+  return server.ip;
+}
+
 std::string NginxProxy::renderApplicationSite(const Application& app) {
   if (app.hostnames.empty()) {
     // Databases and other internal services publish nothing. Drop a site left
@@ -231,8 +244,8 @@ std::string NginxProxy::renderApplicationSite(const Application& app) {
     }
     if (remoteFromAccessPoint && replica.hostPort) {
       auto server = repos_.findServerById(replica.serverId);
-      if (server && !server->ip.empty()) {
-        upstream << "  server " << server->ip << ":" << *replica.hostPort << ";\n";
+      if (server && !backendAddress(*server).empty()) {
+        upstream << "  server " << backendAddress(*server) << ":" << *replica.hostPort << ";\n";
         ++backends;
         continue;
       }
@@ -250,7 +263,7 @@ std::string NginxProxy::renderApplicationSite(const Application& app) {
       if (!server) {
         continue;
       }
-      upstream << "  server " << server->ip << ":" << *replica.hostPort << ";\n";
+      upstream << "  server " << backendAddress(*server) << ":" << *replica.hostPort << ";\n";
       ++backends;
     }
   }

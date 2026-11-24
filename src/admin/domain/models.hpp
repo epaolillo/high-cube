@@ -229,6 +229,26 @@ struct UserActivity {
   std::string createdAt;
 };
 
+// One member of the WireGuard full-mesh network: an hc-agent server or an enrolled device.
+struct VpnNode {
+  int64_t id = 0;
+  std::string kind;  // server | device
+  std::optional<int64_t> serverId;
+  std::optional<int64_t> userId;
+  std::string name;
+  std::string address;  // empty while a device is enrolling
+  std::string publicKey;
+  int listenPort = 0;
+  std::string endpoint;  // manual host[:port] override
+  std::string lanIp;
+  std::string observedIp;
+  std::string status = "pending";  // enrolling | pending | active
+  std::string tokenHash;
+  std::string tokenExpiresAt;
+  std::string lastSeenAt;
+  std::string createdAt;
+};
+
 struct ListQuery {
   int page = 1;
   int pageSize = 10;

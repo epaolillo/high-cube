@@ -1900,6 +1900,43 @@ int64_t Repositories::deleteProcessSnapshotsOlderThan(const std::string& cutoffI
   return st.exec();
 }
 
+void Repositories::insertCpuAttribution(int64_t serverId, const std::string& payloadJson,
+                                        const std::string& collectedAt) {
+  SQLite::Statement st(
+      database_.db(),
+      "INSERT INTO cpu_attribution_snapshots (server_id,payload_json,collected_at) VALUES (?,?,?)");
+  st.bind(1, serverId);
+  st.bind(2, payloadJson);
+  st.bind(3, collectedAt);
+  st.exec();
+}
+
+std::vector<MetricRow> Repositories::listCpuAttribution(int64_t serverId, const std::string& from,
+                                                        const std::string& to) {
+  std::vector<MetricRow> rows;
+  SQLite::Statement st(database_.db(),
+                       "SELECT id,server_id,payload_json,collected_at FROM cpu_attribution_snapshots "
+                       "WHERE server_id=? AND collected_at>=? AND collected_at<=? ORDER BY collected_at ASC");
+  st.bind(1, serverId);
+  st.bind(2, from);
+  st.bind(3, to);
+  while (st.executeStep()) {
+    MetricRow row;
+    row.id = st.getColumn(0).getInt64();
+    row.serverId = st.getColumn(1).getInt64();
+    row.payloadJson = st.getColumn(2).getString();
+    row.collectedAt = st.getColumn(3).getString();
+    rows.push_back(row);
+  }
+  return rows;
+}
+
+int64_t Repositories::deleteCpuAttributionOlderThan(const std::string& cutoffIso) {
+  SQLite::Statement st(database_.db(), "DELETE FROM cpu_attribution_snapshots WHERE collected_at < ?");
+  st.bind(1, cutoffIso);
+  return st.exec();
+}
+
 std::vector<Repositories::ServerEvent> Repositories::listServerEvents(int64_t serverId, const std::string& from,
                                                                       const std::string& to) {
   std::vector<ServerEvent> events;

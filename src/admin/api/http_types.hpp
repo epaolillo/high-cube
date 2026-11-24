@@ -40,6 +40,17 @@ inline Response errorResponse(http::status status, const std::string& message) {
   return jsonResponse(status, {{"error", message}});
 }
 
+inline Response textResponse(http::status status, const std::string& body,
+                             const std::string& contentType = "text/plain; charset=utf-8") {
+  Response res{status, 11};
+  res.set(http::field::content_type, contentType);
+  res.set(http::field::cache_control, "no-store");
+  res.keep_alive(false);
+  res.body() = body;
+  res.prepare_payload();
+  return res;
+}
+
 inline Response emptyResponse(http::status status) {
   Response res{status, 11};
   res.set(http::field::access_control_allow_origin, "*");

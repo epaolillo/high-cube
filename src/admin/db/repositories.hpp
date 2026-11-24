@@ -168,6 +168,13 @@ public:
                                               const std::string& to);
   int64_t deleteProcessSnapshotsOlderThan(const std::string& cutoffIso);
 
+  // CPU attribution by container (per-minute samples)
+  void insertCpuAttribution(int64_t serverId, const std::string& payloadJson,
+                            const std::string& collectedAt);
+  std::vector<MetricRow> listCpuAttribution(int64_t serverId, const std::string& from,
+                                            const std::string& to);
+  int64_t deleteCpuAttributionOlderThan(const std::string& cutoffIso);
+
   // Deployments and replica incidents of applications running on a server, oldest first.
   struct ServerEvent {
     std::string at;

@@ -122,6 +122,15 @@ public:
   std::string startQuickCommand(int64_t serverId, const std::string& kind, const std::string& name,
                                 const std::string& payloadJson);
   QuickCommandPoll pollQuickCommand(const std::string& requestId, int64_t serverId, std::size_t since);
+
+  // VPN: the hub only relays. VpnService decides what each server should run.
+  using VpnRegisteredHandler = std::function<void(int64_t serverId, const std::string& remoteIp)>;
+  using VpnStatusHandler = std::function<void(int64_t serverId, const std::string& payloadJson,
+                                              const std::string& remoteIp)>;
+  void setVpnHandlers(VpnRegisteredHandler onRegistered, VpnStatusHandler onStatus);
+  // False when the agent is not connected; it receives the config again when it registers.
+  bool sendVpnApply(int64_t serverId, const std::string& configJson);
+
   net::io_context& ioContext() { return ioc_; }
 
 private:
@@ -136,6 +145,7 @@ private:
   void handleQuickCommandProgress(AgentSession::Pointer session, const ::highcube::QuickCommandProgress& msg);
   void handleQuickCommandResult(AgentSession::Pointer session, const ::highcube::QuickCommandResult& msg);
   void handleProcessSnapshot(AgentSession::Pointer session, const ::highcube::ProcessSnapshot& msg);
+  void handleCpuAttribution(AgentSession::Pointer session, const ::highcube::CpuAttribution& msg);
   void applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson);
   void finishDbWaiter(const std::string& requestId, std::uint64_t waiterId);
   void handleDeploymentLog(const ::highcube::DeploymentLog& msg);
@@ -159,6 +169,8 @@ private:
   NginxProxy* proxy_ = nullptr;
   AuthMiddleware* auth_ = nullptr;
   GithubAppService* githubApps_ = nullptr;
+  VpnRegisteredHandler vpnRegistered_;
+  VpnStatusHandler vpnStatus_;
   std::mutex mutex_;
   std::unordered_map<int64_t, AgentSession::Pointer> sessionsByServer_;
   std::unordered_map<std::string, TerminalLink> terminals_;

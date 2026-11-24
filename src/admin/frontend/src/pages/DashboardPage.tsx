@@ -14,7 +14,9 @@ import IntegrationsPage from './IntegrationsPage';
 import ProfilePage from './ProfilePage';
 import ServerDetailPage from './ServerDetailPage';
 import UserDetailPage from './UserDetailPage';
+import VpnPage from '../vpn/VpnPage';
 import '../dashboard/dashboard.css';
+import '../vpn/vpn.css';
 
 // A select, dropdown, date picker, modal or confirm dialog should consume ESC itself.
 function overlayWantsEscape() {
@@ -40,6 +42,7 @@ type DrawerState =
   | { kind: 'user'; id: number }
   | { kind: 'profile' }
   | { kind: 'integrations' }
+  | { kind: 'vpn' }
   | null;
 
 export default function DashboardPage() {
@@ -81,6 +84,16 @@ export default function DashboardPage() {
             <small>{t('controlPlane')}</small>
           </div>
           <div className="hc-dash__spacer" />
+          {isAdmin && (
+            <button
+              type="button"
+              className="hc-dash__navbtn"
+              data-active={drawer?.kind === 'vpn'}
+              onClick={() => setDrawer({ kind: 'vpn' })}
+            >
+              {t('vpn')}
+            </button>
+          )}
           <Dropdown
             trigger={['click']}
             menu={{
@@ -121,6 +134,7 @@ export default function DashboardPage() {
           {drawer?.kind === 'user' && <UserDetailPage id={drawer.id} onSaved={closeDrawer} />}
           {drawer?.kind === 'profile' && <ProfilePage />}
           {drawer?.kind === 'integrations' && <IntegrationsPage />}
+          {drawer?.kind === 'vpn' && <VpnPage />}
         </Drawer>
       </div>
       </ServerFilterProvider>

@@ -527,3 +527,216 @@
   background: #09825d;
   box-shadow: 0 0 0 3px rgba(9, 130, 93, 0.18);
 }
+
+/* Server card: header, specs, pixel meters, network traffic and VPN footer. */
+.hc-row.hc-card {
+  gap: 8px;
+  margin: 8px;
+  padding: 10px;
+  border: 1px solid #e3e8ee;
+  border-radius: 8px;
+  background: #fff;
+}
+.hc-row.hc-card:last-child {
+  border-bottom: 1px solid #e3e8ee;
+}
+.hc-row.hc-card:hover {
+  background: #fff;
+  border-color: #c9d3df;
+}
+.hc-card__ident {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.hc-card__ident .hc-row__name {
+  flex: none;
+  max-width: 100%;
+  line-height: 16px;
+}
+.hc-card__ip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 6px;
+  border: 1px solid #e3e8ee;
+  border-radius: 4px;
+  background: #f5f8fc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  color: #425466;
+}
+.hc-card__ip[data-vpn='true'] {
+  color: #09825d;
+  border-color: rgba(9, 130, 93, 0.3);
+  background: rgba(9, 130, 93, 0.06);
+}
+
+.hc-card__specs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid #e3e8ee;
+  border-radius: 6px;
+  background: #f5f8fc;
+}
+.hc-card__spec {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #0a2540;
+  white-space: nowrap;
+}
+.hc-card__spec + .hc-card__spec {
+  border-left: 1px solid #e3e8ee;
+}
+.hc-card__glyph {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  font-size: 13px;
+}
+.hc-card__spec[data-kind='cpu'] .hc-card__glyph {
+  color: #635bff;
+}
+.hc-card__spec[data-kind='mem'] .hc-card__glyph {
+  color: #09825d;
+}
+.hc-card__spec[data-kind='disk'] .hc-card__glyph {
+  color: #b76e00;
+}
+.hc-card__spec-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6b7c93;
+}
+.hc-card__spec-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hc-card__spec-muted {
+  font-weight: 400;
+  color: #6b7c93;
+}
+
+.hc-card__traffic {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.hc-card__net {
+  --hc-net: #09825d;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid #e3e8ee;
+  border-radius: 6px;
+  background: #f5f8fc;
+}
+.hc-card__net[data-dir='tx'] {
+  --hc-net: #635bff;
+}
+.hc-card__net[data-off='true'] {
+  --hc-net: #aebecd;
+}
+.hc-card__net-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hc-net);
+}
+.hc-card__spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+}
+.hc-card__spark i {
+  flex: 1;
+  min-width: 1px;
+  background: var(--hc-net);
+  opacity: 0.85;
+}
+.hc-card__spark i[data-idle='true'] {
+  background: #dce3ec;
+  opacity: 1;
+}
+.hc-card__net-value {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #0a2540;
+}
+
+.hc-card__footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hc-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #e3e8ee;
+  border-radius: 6px;
+  background: #f5f8fc;
+  font-size: 11px;
+  color: #425466;
+  white-space: nowrap;
+}
+.hc-card__pill b {
+  font-weight: 600;
+  color: #0a2540;
+  font-variant-numeric: tabular-nums;
+}
+.hc-card__pill-label {
+  color: #6b7c93;
+}
+.hc-card__pill[data-vpn] {
+  font-weight: 700;
+}
+.hc-card__pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c2ccd6;
+}
+.hc-card__pill[data-vpn='on'] {
+  color: #09825d;
+  border-color: rgba(9, 130, 93, 0.35);
+  background: rgba(9, 130, 93, 0.08);
+}
+.hc-card__pill[data-vpn='on'] .hc-card__pill-dot {
+  background: #09825d;
+  box-shadow: 0 0 0 2px rgba(9, 130, 93, 0.2);
+}
+.hc-card__pill[data-vpn='off'] {
+  color: #df1b41;
+  border-color: rgba(223, 27, 65, 0.3);
+  background: rgba(223, 27, 65, 0.06);
+}
+.hc-card__pill[data-vpn='off'] .hc-card__pill-dot {
+  background: #df1b41;
+}
+.hc-card__pill[data-vpn='none'] {
+  color: #8898aa;
+}

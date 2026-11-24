@@ -157,6 +157,8 @@ void MetricsRetentionService::runOnce() {
   const auto cutoff = isoUtc(now - std::chrono::hours{24 * days});
   ctx_.repos->deleteMetricsOlderThan(cutoff);
   ctx_.repos->deleteProcessSnapshotsOlderThan(isoUtc(now - std::chrono::hours{kProcessSnapshotTtlHours}));
+  // Container CPU attribution charts share the metrics retention window.
+  ctx_.repos->deleteCpuAttributionOlderThan(cutoff);
   // Keep crash traceability under the same retention window as metrics.
   ctx_.repos->deleteIncidentsOlderThan(cutoff);
   // The audit trail and presence history share the same retention window.

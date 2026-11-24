@@ -9,6 +9,7 @@
 #include "domain/models.hpp"
 #include "presence/presence_hub.hpp"
 #include "proxy/nginx_proxy.hpp"
+#include "vpn/vpn_live_state.hpp"
 
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -35,6 +36,8 @@ struct AppContext {
   std::unique_ptr<PlacementService> placement;
   std::unique_ptr<DeploymentService> deployments;
   std::unique_ptr<GithubAppService> githubApps;
+  // WireGuard counters reported by VPN members; memory only.
+  std::shared_ptr<vpn::LiveState> vpnLive;
   // Owned by main after the io_context, because it holds a timer bound to it.
   HostTerminalPolling* terminalPolling = nullptr;
 };
@@ -133,6 +136,10 @@ public:
   nlohmann::json snapshot(int64_t id);
   // Server record plus the last five minutes of downsampled metrics.
   nlohmann::json overview(int64_t id);
+  // Stacked CPU by container, bucketed for the selected window.
+  nlohmann::json cpuAttribution(int64_t id, const std::string& from, const std::string& to);
+  // Process breakdown for one bucket (from/to of the clicked bar).
+  nlohmann::json cpuAttributionProcesses(int64_t id, const std::string& from, const std::string& to);
 
 private:
   AppContext& ctx_;
@@ -313,6 +320,60 @@ public:
 
 private:
   AppContext& ctx_;
+};
+
+// The single WireGuard hub-and-spoke network ("VPN"). hc-admin only decides addresses and
+// peers; the nodes run wg/wg-quick. Servers are driven through their agent; devices pull
+// their config with a token.
+class VpnService {
+public:
+  explicit VpnService(AppContext& ctx);
+  // Network, members with live counters, and every pair of members as a link.
+  nlohmann::json state();
+  // body: {cidr?}. 409 when the VPN already exists.
+  nlohmann::json createNetwork(const nlohmann::json& body);
+  void deleteNetwork();
+  // body: {listenPort?, endpoint?, hub?}. Creates the VPN with defaults when it does not
+  // exist. The first server becomes the central node (hub).
+  nlohmann::json joinServer(int64_t serverId, const nlohmann::json& body);
+  // Every member peers only with the hub, which forwards traffic between them.
+  nlohmann::json setHub(int64_t nodeId);
+  // body: {name?, listenPort?, endpoint?}
+  nlohmann::json updateNode(int64_t nodeId, const nlohmann::json& body);
+  void removeNode(int64_t nodeId);
+  // One-time command that enrolls the machine where it is pasted.
+  // requestOrigin is the scheme://host the admin was reached on; empty falls back to public_url.
+  nlohmann::json createEnrollment(const User& actor, const std::string& requestOrigin);
+  nlohmann::json enrollment(int64_t nodeId);
+  // serverId (string) -> {member, connected, address}; servers outside the VPN are absent.
+  nlohmann::json serverIndicators();
+
+  // Device routes. They authenticate with the token in the path or the bearer header.
+  std::string enrollScript(const std::string& token, const std::string& requestOrigin);
+  // Remembers the public name devices reach hc-admin through, used as the hub endpoint
+  // and to recognize members behind the admin's own router.
+  void learnPublicHost(const std::string& requestOrigin);
+  // VPN address nginx should use for this server, or empty when the tunnel to it is not
+  // usable right now (then server.ip applies).
+  std::string routingAddress(int64_t serverId);
+  // Re-renders the sites of this server's applications when routingAddress flips.
+  void refreshRouting(int64_t serverId);
+  // Returns the device sync token.
+  std::string enroll(const std::string& token, const nlohmann::json& body,
+                     const std::string& observedIp);
+  // wg-quick body for the device, or nullopt when it is no longer a member (410).
+  std::optional<std::string> deviceSync(const std::string& deviceToken, const std::string& dump,
+                                        bool interfaceUp, const std::string& lanIp,
+                                        const std::string& observedIp);
+
+  // Agent hooks.
+  void onAgentRegistered(int64_t serverId, const std::string& remoteIp);
+  void onAgentStatus(int64_t serverId, const std::string& payloadJson, const std::string& remoteIp);
+  void onServerRemoved(int64_t serverId);
+
+private:
+  AppContext& ctx_;
+  void pushAll();
 };
 
 class MetricsRetentionService {

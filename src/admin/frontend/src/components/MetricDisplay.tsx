@@ -21,6 +21,8 @@ type Props = {
   replicas?: number;
   /** Visual theme of the panel. Defaults to the light UI theme. */
   variant?: Variant;
+  /** Draws the LED / replicas / clock header above the meters. */
+  showHeader?: boolean;
 };
 
 // Color palettes for the pixel panel. Light matches the Stripe UI theme; dark
@@ -121,12 +123,13 @@ const FONT: Record<string, string[]> = {
 // before the first measurement.
 const MIN_VW = 120;
 const ROW_TOP = 8;
+const ROW_TOP_NO_HEADER = 2;
 const ROW_PITCH = 8;
 const BASE_ROWS = 3;
 const SCALE = 2;
 
-function panelHeight(rowCount: number) {
-  return ROW_TOP + rowCount * ROW_PITCH - 2;
+function panelHeight(rowCount: number, rowTop = ROW_TOP) {
+  return rowTop + rowCount * ROW_PITCH - 2;
 }
 
 function measure(text: string) {
@@ -196,6 +199,7 @@ export function MetricDisplay({
   status = 'stopped',
   replicas,
   variant = 'light',
+  showHeader = true,
 }: Props) {
   const { t } = useTranslation();
   const pal = PALETTES[variant];
@@ -204,7 +208,8 @@ export function MetricDisplay({
   const [now, setNow] = useState(() => Date.now());
   const [vw, setVw] = useState(MIN_VW);
   const hasGpu = gpuPresent;
-  const vh = panelHeight(hasGpu ? BASE_ROWS + 2 : BASE_ROWS);
+  const rowTop = showHeader ? ROW_TOP : ROW_TOP_NO_HEADER;
+  const vh = panelHeight(hasGpu ? BASE_ROWS + 2 : BASE_ROWS, rowTop);
 
   // Tick once per second to animate the uptime clock without re-polling.
   useEffect(() => {
@@ -247,19 +252,21 @@ export function MetricDisplay({
     const deploying = status === 'deploying';
     const ledColor = running ? pal.ledRunning : deploying ? pal.ledDeploying : pal.ledStopped;
 
-    // Status LED (a crisp 3x3 block).
-    ctx.fillStyle = ledColor;
-    ctx.fillRect(1, 1, 3, 3);
+    if (showHeader) {
+      // Status LED (a crisp 3x3 block).
+      ctx.fillStyle = ledColor;
+      ctx.fillRect(1, 1, 3, 3);
 
-    // Replicas count.
-    if (replicas && replicas > 0) {
-      drawText(ctx, `x${replicas}`, 6, 0, pal.replicas);
+      // Replicas count.
+      if (replicas && replicas > 0) {
+        drawText(ctx, `x${replicas}`, 6, 0, pal.replicas);
+      }
+
+      // Uptime clock (right-aligned).
+      const uptime = running && startedAt ? now - Date.parse(startedAt) : 0;
+      const clock = running ? formatUptime(uptime) : '--:--:--';
+      drawText(ctx, clock, vw - 1 - measure(clock), 0, running ? pal.clockRunning : pal.clockStopped);
     }
-
-    // Uptime clock (right-aligned).
-    const uptime = running && startedAt ? now - Date.parse(startedAt) : 0;
-    const clock = running ? formatUptime(uptime) : '--:--:--';
-    drawText(ctx, clock, vw - 1 - measure(clock), 0, running ? pal.clockRunning : pal.clockStopped);
 
     // Metrics.
     const cpu = clamp(cpuPercent || 0);
@@ -317,7 +324,7 @@ export function MetricDisplay({
     const segCount = Math.max(1, Math.floor((barWidth + 1) / pitch));
 
     meters.forEach((meter, index) => {
-      const y = ROW_TOP + index * ROW_PITCH;
+      const y = rowTop + index * ROW_PITCH;
       // Label glyph.
       drawText(ctx, meter.label, 1, y, running ? meter.color : pal.labelStopped);
       // Readout, right-aligned.
@@ -347,6 +354,8 @@ export function MetricDisplay({
     pal,
     vw,
     vh,
+    rowTop,
+    showHeader,
   ]);
 
   const memText =

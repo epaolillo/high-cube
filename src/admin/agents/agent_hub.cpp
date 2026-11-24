@@ -160,6 +160,14 @@ void AgentHub::onUpgrade(tcp::socket socket, http::request<http::string_body> re
 }
 
 void AgentHub::onAgentUpgrade(tcp::socket socket, http::request<http::string_body> req) {
+  std::string remoteIp = std::string(req["X-Real-IP"]);
+  if (remoteIp.empty()) {
+    beast::error_code ec;
+    const auto peer = socket.remote_endpoint(ec);
+    if (!ec) {
+      remoteIp = peer.address().to_string();
+    }
+  }
   auto session = std::make_shared<AgentSession>(
       std::move(socket),
       [self = shared_from_this()](AgentSession::Pointer s, const ::highcube::Envelope& env) {
@@ -169,6 +177,7 @@ void AgentHub::onAgentUpgrade(tcp::socket socket, http::request<http::string_bod
           spdlog::error("agent message failed: {}", ex.what());
         }
       });
+  session->setRemoteIp(std::move(remoteIp));
   session->start(std::move(req), [self = shared_from_this()](AgentSession::Pointer s) {
     self->onSessionClosed(s);
   });
@@ -321,10 +330,24 @@ void AgentHub::onMessage(AgentSession::Pointer session, const ::highcube::Envelo
       }
       break;
     }
+    case ::highcube::CPU_ATTRIBUTION: {
+      ::highcube::CpuAttribution msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleCpuAttribution(session, msg);
+      }
+      break;
+    }
     case ::highcube::DEPLOYMENT_LOG: {
       ::highcube::DeploymentLog msg;
       if (msg.ParseFromString(envelope.payload())) {
         handleDeploymentLog(msg);
+      }
+      break;
+    }
+    case ::highcube::VPN_STATUS: {
+      ::highcube::VpnStatus msg;
+      if (session->serverId() != 0 && vpnStatus_ && msg.ParseFromString(envelope.payload())) {
+        vpnStatus_(session->serverId(), msg.payload_json(), session->remoteIp());
       }
       break;
     }
@@ -382,6 +405,29 @@ void AgentHub::handleRegister(AgentSession::Pointer session, const ::highcube::R
   }
   spdlog::info("agent registered: {} ({})", server->name, server->id);
   reconcileServer(server->id);
+  if (vpnRegistered_) {
+    try {
+      vpnRegistered_(server->id, session->remoteIp());
+    } catch (const std::exception& ex) {
+      spdlog::error("vpn sync for server {} failed: {}", server->id, ex.what());
+    }
+  }
+}
+
+void AgentHub::setVpnHandlers(VpnRegisteredHandler onRegistered, VpnStatusHandler onStatus) {
+  vpnRegistered_ = std::move(onRegistered);
+  vpnStatus_ = std::move(onStatus);
+}
+
+bool AgentHub::sendVpnApply(int64_t serverId, const std::string& configJson) {
+  auto session = sessionForServer(serverId);
+  if (!session) {
+    return false;
+  }
+  ::highcube::VpnApply order;
+  order.set_config_json(configJson);
+  session->send(makeEnvelope(::highcube::VPN_APPLY, order));
+  return true;
 }
 
 void AgentHub::handleHeartbeat(AgentSession::Pointer session) {
@@ -483,6 +529,13 @@ void AgentHub::handleProcessSnapshot(AgentSession::Pointer session, const ::high
     return;
   }
   repos_.insertProcessSnapshot(session->serverId(), msg.payload_json(), nowIso());
+}
+
+void AgentHub::handleCpuAttribution(AgentSession::Pointer session, const ::highcube::CpuAttribution& msg) {
+  if (session->serverId() == 0) {
+    return;
+  }
+  repos_.insertCpuAttribution(session->serverId(), msg.payload_json(), nowIso());
 }
 
 void AgentHub::handleQuickCommandProgress(AgentSession::Pointer session,

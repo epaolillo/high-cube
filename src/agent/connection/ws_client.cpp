@@ -25,24 +25,6 @@ namespace {
 // History sent when a log stream opens; the browser keeps at most 1 MB of it.
 constexpr unsigned kLogTailLines = 10000;
 
-// Container names are hc-<application_id>-<replica_id>.
-bool parseReplicaIdFromName(const std::string& name, int64_t& replicaId) {
-  if (name.rfind("hc-", 0) != 0) {
-    return false;
-  }
-  const auto lastDash = name.rfind('-');
-  if (lastDash == std::string::npos || lastDash <= 2) {
-    return false;
-  }
-  try {
-    std::size_t idx = 0;
-    replicaId = std::stoll(name.substr(lastDash + 1), &idx);
-    return idx == name.size() - lastDash - 1 && replicaId > 0;
-  } catch (const std::exception&) {
-    return false;
-  }
-}
-
 }  // namespace
 
 WsClient::WsClient(net::io_context& ioc, AgentConfig config, DockerRuntime& runtime)
@@ -54,7 +36,8 @@ WsClient::WsClient(net::io_context& ioc, AgentConfig config, DockerRuntime& runt
       heartbeatTimer_(ioc),
       metricsTimer_(ioc),
       containerMetricsTimer_(ioc),
-      processSnapshotTimer_(ioc) {
+      processSnapshotTimer_(ioc),
+      vpnStatusTimer_(ioc) {
   // admin_url like wss://host/api/agents/connect or ws://host:3000/api/agents/connect
   std::string url = config_.adminUrl;
   if (url.rfind("wss://", 0) == 0) {
@@ -155,6 +138,7 @@ void WsClient::onHandshake(beast::error_code ec) {
   startMetrics();
   startContainerMetrics();
   startProcessSnapshots();
+  startVpnStatus();
 }
 
 void WsClient::doRead() {
@@ -451,6 +435,22 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
       }
       break;
     }
+    case ::highcube::VPN_APPLY: {
+      ::highcube::VpnApply order;
+      if (order.ParseFromString(envelope.payload())) {
+        // apt-get and wg-quick can take minutes; keep the socket loop responsive.
+        auto self = shared_from_this();
+        std::thread([self, configJson = order.config_json()]() {
+          try {
+            self->vpn_->apply(configJson);
+            self->reportVpnStatus();
+          } catch (const std::exception& ex) {
+            spdlog::warn("vpn apply failed: {}", ex.what());
+          }
+        }).detach();
+      }
+      break;
+    }
     default:
       break;
   }
@@ -546,14 +546,21 @@ void WsClient::startProcessSnapshots() {
     if (!self->processSnapshotRunning_.exchange(true)) {
       std::thread([self]() {
         try {
+          auto processes = self->processSampler_.sample();
+          const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch())
+                                 .count();
           ::highcube::ProcessSnapshot snapshot;
-          snapshot.set_payload_json(collectProcessSnapshotJson(self->processSampler_));
-          snapshot.set_collected_at_unix_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                std::chrono::system_clock::now().time_since_epoch())
-                                                .count());
-          net::post(self->ioc_, [self, snapshot]() {
+          snapshot.set_payload_json(collectProcessSnapshotJson(self->processSampler_, processes));
+          snapshot.set_collected_at_unix_ms(nowMs);
+          ::highcube::CpuAttribution attribution;
+          attribution.set_payload_json(
+              collectCpuAttributionJson(self->processSampler_, processes, self->previousCgroupUsec_));
+          attribution.set_collected_at_unix_ms(nowMs);
+          net::post(self->ioc_, [self, snapshot, attribution]() {
             if (self->connected_) {
               self->send(makeEnvelope(::highcube::PROCESS_SNAPSHOT, snapshot));
+              self->send(makeEnvelope(::highcube::CPU_ATTRIBUTION, attribution));
             }
           });
         } catch (const std::exception& ex) {
@@ -563,6 +570,44 @@ void WsClient::startProcessSnapshots() {
       }).detach();
     }
     self->startProcessSnapshots();
+  });
+}
+
+void WsClient::startVpnStatus() {
+  vpnStatusTimer_.expires_after(std::chrono::seconds(5));
+  vpnStatusTimer_.async_wait([self = shared_from_this()](beast::error_code ec) {
+    if (ec || !self->connected_) {
+      return;
+    }
+    if (!self->vpnStatusRunning_.exchange(true)) {
+      std::thread([self]() {
+        try {
+          // Picks up the one-time helper setup without waiting for a new order.
+          self->vpn_->retryPending();
+          self->vpn_->heal();
+          self->reportVpnStatus();
+        } catch (const std::exception& ex) {
+          spdlog::warn("vpn status failed: {}", ex.what());
+        }
+        self->vpnStatusRunning_ = false;
+      }).detach();
+    }
+    self->startVpnStatus();
+  });
+}
+
+// Runs on a worker thread: reading the status shells out to wg.
+void WsClient::reportVpnStatus() {
+  const auto payload = vpn_->statusJson();
+  if (payload.empty()) {
+    return;
+  }
+  ::highcube::VpnStatus status;
+  status.set_payload_json(payload);
+  net::post(ioc_, [self = shared_from_this(), status]() {
+    if (self->connected_) {
+      self->send(makeEnvelope(::highcube::VPN_STATUS, status));
+    }
   });
 }
 

@@ -3,8 +3,10 @@
 #include "agents/agent_hub.hpp"
 #include "agents/terminal_polling.hpp"
 #include "auth/password.hpp"
+#include "vpn/device_script.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 
@@ -37,6 +39,30 @@ Application requireAppAccess(AppContext& ctx, RequestContext& c, int64_t appId) 
     throw ForbiddenError();
   }
   return *app;
+}
+
+// scheme://host[:port] the client used to reach the admin, or empty when it cannot be
+// trusted. It ends up inside a shell command, so only plain host characters pass.
+std::string requestOrigin(RequestContext& c) {
+  const auto safeHost = [](const std::string& host) {
+    return !host.empty() && host.size() <= 253 &&
+           std::all_of(host.begin(), host.end(), [](unsigned char ch) {
+             return std::isalnum(ch) || ch == '.' || ch == '-' || ch == ':' || ch == '[' || ch == ']';
+           });
+  };
+  // Browsers send Origin on POST, port included.
+  const auto origin = std::string(c.request["Origin"]);
+  for (const std::string scheme : {"http://", "https://"}) {
+    if (origin.rfind(scheme, 0) == 0 && safeHost(origin.substr(scheme.size()))) {
+      return origin;
+    }
+  }
+  const auto host = std::string(c.request[http::field::host]);
+  if (!safeHost(host)) {
+    return {};
+  }
+  const auto proto = std::string(c.request["X-Forwarded-Proto"]);
+  return (proto == "https" ? "https://" : "http://") + host;
 }
 
 }  // namespace
@@ -279,6 +305,17 @@ void registerHandlers(Router& router, AppContext& ctx) {
     return jsonResponse(http::status::ok, ServerService(ctx).metrics(std::stoll(c.params["id"]),
                                                                      c.query["from"], c.query["to"]));
   });
+  router.add("GET", "/api/servers/:id/cpu-attribution", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok,
+                        ServerService(ctx).cpuAttribution(std::stoll(c.params["id"]), c.query["from"],
+                                                          c.query["to"]));
+  });
+  router.add("GET", "/api/servers/:id/cpu-attribution/processes", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, ServerService(ctx).cpuAttributionProcesses(
+                                              std::stoll(c.params["id"]), c.query["from"], c.query["to"]));
+  });
   router.add("POST", "/api/servers/:id/quick-commands", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(), nullptr, false);
@@ -314,6 +351,84 @@ void registerHandlers(Router& router, AppContext& ctx) {
   router.add("DELETE", "/api/servers/:id/terminal/sessions/:streamId", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return ctx.terminalPolling->close(std::stoll(c.params["id"]), c.params["streamId"], *c.user);
+  });
+
+  // VPN: one WireGuard full-mesh network. Admin only, except the device routes below.
+  router.add("GET", "/api/vpn", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, VpnService(ctx).state());
+  });
+  router.add("POST", "/api/vpn", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body());
+    return jsonResponse(http::status::created, VpnService(ctx).createNetwork(body));
+  });
+  router.add("DELETE", "/api/vpn", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    VpnService(ctx).deleteNetwork();
+    return emptyResponse(http::status::no_content);
+  });
+  router.add("POST", "/api/vpn/servers/:id", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body());
+    return jsonResponse(http::status::created,
+                        VpnService(ctx).joinServer(std::stoll(c.params["id"]), body));
+  });
+  router.add("POST", "/api/vpn/nodes/:id/hub", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, VpnService(ctx).setHub(std::stoll(c.params["id"])));
+  });
+  router.add("PATCH", "/api/vpn/nodes/:id", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok,
+                        VpnService(ctx).updateNode(std::stoll(c.params["id"]),
+                                                   nlohmann::json::parse(c.request.body())));
+  });
+  router.add("DELETE", "/api/vpn/nodes/:id", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    VpnService(ctx).removeNode(std::stoll(c.params["id"]));
+    return emptyResponse(http::status::no_content);
+  });
+  router.add("POST", "/api/vpn/enrollments", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    VpnService vpnService(ctx);
+    vpnService.learnPublicHost(requestOrigin(c));
+    return jsonResponse(http::status::created, vpnService.createEnrollment(*c.user, requestOrigin(c)));
+  });
+  router.add("GET", "/api/vpn/enrollments/:id", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, VpnService(ctx).enrollment(std::stoll(c.params["id"])));
+  });
+  // Device routes run from a shell on the machine being enrolled: no user session.
+  // The setup script holds no secret; it only installs the helper for the local agent.
+  router.add("GET", "/api/vpn/agent-setup", false, [&](RequestContext&) {
+    return textResponse(http::status::ok, vpn::renderAgentSetupScript(),
+                        "text/x-shellscript; charset=utf-8");
+  });
+  router.add("GET", "/api/vpn/enroll/:token", false, [&](RequestContext& c) {
+    return textResponse(http::status::ok, VpnService(ctx).enrollScript(c.params["token"], requestOrigin(c)),
+                        "text/x-shellscript; charset=utf-8");
+  });
+  router.add("POST", "/api/vpn/enroll/:token", false, [&](RequestContext& c) {
+    const auto body = nlohmann::json::parse(c.request.body().empty() ? "{}" : c.request.body(),
+                                            nullptr, false);
+    if (!body.is_object()) return errorResponse(http::status::bad_request, "Invalid JSON");
+    return textResponse(http::status::ok,
+                        VpnService(ctx).enroll(c.params["token"], body,
+                                               std::string(c.request["X-Real-IP"])));
+  });
+  router.add("POST", "/api/vpn/device/sync", false, [&](RequestContext& c) {
+    auto header = std::string(c.request[http::field::authorization]);
+    const std::string prefix = "Bearer ";
+    const auto token = header.rfind(prefix, 0) == 0 ? header.substr(prefix.size()) : std::string{};
+    VpnService vpnService(ctx);
+    const auto conf = vpnService.deviceSync(
+        token, c.request.body(), std::string(c.request["X-Interface-Up"]) == "1",
+        std::string(c.request["X-Lan-Ip"]), std::string(c.request["X-Real-IP"]));
+    if (!conf) return errorResponse(http::status::gone, "This device is not in the VPN");
+    // Only an enrolled device may teach the public host: the Host header is client input.
+    vpnService.learnPublicHost(requestOrigin(c));
+    return textResponse(http::status::ok, *conf);
   });
 
   router.add("GET", "/api/github-apps", true, [&](RequestContext& c) {
