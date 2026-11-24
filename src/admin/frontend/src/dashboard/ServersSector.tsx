@@ -204,18 +204,18 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                 )}
                 <span className="hc-dot" data-on={s.status === 'online'} />
                 {readOnly ? (
-                  <span className="hc-row-icon" style={{ cursor: 'default' }}>
-                    <AppIcon icon={s.icon} name={s.name} size={30} />
+                  <span className="hc-row-icon hc-row-icon--lg" style={{ cursor: 'default' }}>
+                    <AppIcon icon={s.icon} name={s.name} size={60} />
                   </span>
                 ) : (
                   <Tooltip title={t('iconEditTitle')}>
                     <button
                       type="button"
-                      className="hc-row-icon"
+                      className="hc-row-icon hc-row-icon--lg"
                       aria-label={t('iconEditTitle')}
                       onClick={() => setIconEdit(s)}
                     >
-                      <AppIcon icon={s.icon} name={s.name} size={30} />
+                      <AppIcon icon={s.icon} name={s.name} size={60} />
                     </button>
                   </Tooltip>
                 )}

@@ -82,12 +82,13 @@
   font-weight: 700;
 }
 
-/* Four fixed columns. Users always occupies the fourth, independent of card height. */
+/* Four columns. Servers gets two units, applications one, settings and users half each.
+ * The smaller minimum lets the half columns actually shrink on narrower screens. */
 .hc-dash__board {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(280px, 1fr));
+  grid-template-columns: minmax(280px, 2fr) minmax(280px, 1fr) minmax(200px, 0.5fr) minmax(200px, 0.5fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
@@ -322,6 +323,11 @@
   background: transparent;
   cursor: pointer;
   line-height: 0;
+}
+/* Larger server icon in the server card header. */
+.hc-row-icon--lg {
+  width: 60px;
+  height: 60px;
 }
 
 .hc-avatar-sq {
