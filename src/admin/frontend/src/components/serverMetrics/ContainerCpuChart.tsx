@@ -70,6 +70,9 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<{ from: string; to: string; groupKey?: string }>();
+  // Owned here, not by the chart legend: the parent re-renders every few seconds,
+  // which makes G2 rebuild the chart and forget its own legend filter.
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const to = dayjs();
@@ -128,6 +131,31 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
     return rows;
   }, [buckets, groups, labelByKey]);
 
+  // Groups with data, each with a fixed color so hiding one never recolors the rest.
+  const legendItems = useMemo(() => {
+    const present = new Set(chartData.map((row) => row.groupKey));
+    return groups
+      .filter((group) => present.has(group.key))
+      .map((group, index) => ({
+        key: group.key,
+        label: labelByKey.get(group.key) || group.key,
+        color: COLORS[index % COLORS.length],
+      }));
+  }, [chartData, groups, labelByKey]);
+
+  const visibleData = useMemo(
+    () => chartData.filter((row) => !hiddenKeys.has(row.groupKey)),
+    [chartData, hiddenKeys],
+  );
+
+  const toggleGroup = (key: string) =>
+    setHiddenKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
   return (
     <div style={{ ...cardStyle, opacity: loading ? 0.6 : 1 }}>
       <Typography.Text strong>{t('containerCpuTitle')}</Typography.Text>
@@ -139,52 +167,91 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
           {t('containerCpuEmpty')}
         </Typography.Text>
       ) : (
-        <Column
-          height={260}
-          autoFit
-          data={chartData}
-          xField="time"
-          yField="value"
-          colorField="group"
-          stack
-          animate={false}
-          scale={{
-            x: { type: 'band' },
-            y: { domainMin: 0, nice: true },
-            color: { range: COLORS },
-          }}
-          axis={{
-            x: {
-              tickCount: 6,
-              labelAutoHide: true,
-              labelFormatter: (value: number) => formatTick(Number(value), range),
-            },
-            y: {
-              title: '%',
-              labelFormatter: (value: number) => `${Number(Number(value).toFixed(2))}%`,
-            },
-          }}
-          legend={{ color: { position: 'top' } }}
-          tooltip={{
-            title: (datum: { time: number }) => dayjs(datum.time).format('YYYY-MM-DD HH:mm:ss'),
-            items: [
-              (datum: { group: string; value: number }) => ({
-                name: datum.group,
-                value: `${datum.value.toFixed(2)}%`,
-              }),
-            ],
-          }}
-          interaction={{ elementHighlight: true }}
-          onReady={(chart: { on: (event: string, handler: (event: unknown) => void) => void }) => {
-            chart.on('element:click', (event) => {
-              const datum = (event as {
-                data?: { data?: { from?: string; to?: string; groupKey?: string } };
-              }).data?.data;
-              if (!datum?.from || !datum?.to) return;
-              setModal({ from: datum.from, to: datum.to, groupKey: datum.groupKey });
-            });
-          }}
-        />
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: 12 }}>
+            {legendItems.map((item) => {
+              const hidden = hiddenKeys.has(item.key);
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => toggleGroup(item.key)}
+                  aria-pressed={!hidden}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: 0,
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    color: hidden ? '#AEBECD' : '#425466',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      background: hidden ? '#DCE3EC' : item.color,
+                    }}
+                  />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <Column
+            height={260}
+            autoFit
+            data={visibleData}
+            xField="time"
+            yField="value"
+            colorField="group"
+            stack
+            animate={false}
+            scale={{
+              x: { type: 'band' },
+              y: { domainMin: 0, nice: true },
+              color: {
+                domain: legendItems.map((item) => item.label),
+                range: legendItems.map((item) => item.color),
+              },
+            }}
+            axis={{
+              x: {
+                tickCount: 6,
+                labelAutoHide: true,
+                labelFormatter: (value: number) => formatTick(Number(value), range),
+              },
+              y: {
+                title: '%',
+                labelFormatter: (value: number) => `${Number(Number(value).toFixed(2))}%`,
+              },
+            }}
+            legend={false}
+            tooltip={{
+              title: (datum: { time: number }) => dayjs(datum.time).format('YYYY-MM-DD HH:mm:ss'),
+              items: [
+                (datum: { group: string; value: number }) => ({
+                  name: datum.group,
+                  value: `${datum.value.toFixed(2)}%`,
+                }),
+              ],
+            }}
+            interaction={{ elementHighlight: true }}
+            onReady={(chart: { on: (event: string, handler: (event: unknown) => void) => void }) => {
+              chart.on('element:click', (event) => {
+                const datum = (event as {
+                  data?: { data?: { from?: string; to?: string; groupKey?: string } };
+                }).data?.data;
+                if (!datum?.from || !datum?.to) return;
+                setModal({ from: datum.from, to: datum.to, groupKey: datum.groupKey });
+              });
+            }}
+          />
+        </>
       )}
       {modal ? (
         <ContainerProcessesModal
