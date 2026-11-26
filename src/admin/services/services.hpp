@@ -124,7 +124,9 @@ public:
   nlohmann::json listHostingUserApplications(int64_t userId);
   nlohmann::json get(int64_t id);
   nlohmann::json create(const nlohmann::json& body);
+  // A new name also renames the host through the agent; see "hostnameChange" in the reply.
   nlohmann::json update(int64_t id, const nlohmann::json& body);
+  nlohmann::json hostnameChange(int64_t id, const std::string& requestId);
   nlohmann::json rotateToken(int64_t id);
   // Asks the connected agent to install the hc-agent binary that sits next to hc-admin.
   nlohmann::json updateAgent(int64_t id);

@@ -204,9 +204,9 @@ fi
 say "Installing /usr/local/sbin/hc-vpn-helper"
 cat > /usr/local/sbin/hc-vpn-helper <<'HELPER'
 #!/usr/bin/env bash
-# High Cube VPN helper: the only root entry point hc-agent uses for WireGuard.
+# High Cube VPN helper: the only root entry point hc-agent uses (WireGuard and the hostname).
 # Usage: check | apply <iface> <port> <forward 0|1> <base64 body> | status <iface>
-#        | heal <iface> <port> <forward 0|1> | down <iface>
+#        | heal <iface> <port> <forward 0|1> | down <iface> | hostname <name>
 set -uo pipefail
 STATE_DIR=/etc/hc-vpn
 KEY="$STATE_DIR/private.key"
@@ -253,6 +253,30 @@ reresolve() {
 
 ACTION=${1:-}
 if [ "$ACTION" = check ]; then echo ok; exit 0; fi
+if [ "$ACTION" = hostname ]; then
+  NAME=${2:-}
+  # In UTF-8 locales [a-z] also matches accented letters.
+  export LC_ALL=C
+  [[ "$NAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || fail "invalid hostname"
+  OLD=$(hostname)
+  if command -v hostnamectl >/dev/null 2>&1; then
+    hostnamectl set-hostname "$NAME" 2>/dev/null || fail "hostnamectl set-hostname failed"
+  else
+    printf '%s\n' "$NAME" > /etc/hostname && hostname "$NAME" || fail "could not write /etc/hostname"
+  fi
+  # sudo and local services resolve the hostname through /etc/hosts.
+  if grep -qE '^127\.0\.1\.1[[:space:]]' /etc/hosts; then
+    sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1 $NAME/" /etc/hosts
+  else
+    printf '127.0.1.1 %s\n' "$NAME" >> /etc/hosts
+  fi
+  # cloud-init would restore the installer hostname on the next boot.
+  if [ -d /etc/cloud/cloud.cfg.d ]; then
+    printf 'preserve_hostname: true\n' > /etc/cloud/cloud.cfg.d/99-highcube-hostname.cfg
+  fi
+  echo "ok $OLD -> $NAME"
+  exit 0
+fi
 IFACE=${2:-}
 [[ "$IFACE" =~ ^[a-z0-9-]{1,15}$ ]] || fail "invalid interface name"
 CONF="/etc/wireguard/$IFACE.conf"

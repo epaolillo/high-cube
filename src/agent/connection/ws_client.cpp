@@ -4,6 +4,7 @@
 #include "metrics/host_metrics.hpp"
 #include "protocol/codec.hpp"
 #include "runtime/db_manage.hpp"
+#include "system/hostname.hpp"
 
 #include <boost/process.hpp>
 #include <openssl/err.h>
@@ -447,6 +448,36 @@ void WsClient::handleEnvelope(const ::highcube::Envelope& envelope) {
           } catch (const std::exception& ex) {
             spdlog::warn("vpn apply failed: {}", ex.what());
           }
+        }).detach();
+      }
+      break;
+    }
+    case ::highcube::SET_HOSTNAME: {
+      ::highcube::SetHostname order;
+      if (order.ParseFromString(envelope.payload())) {
+        auto self = shared_from_this();
+        std::thread([self, order]() {
+          ::highcube::HostnameResult result;
+          result.set_correlation_id(order.correlation_id());
+          result.set_hostname(order.hostname());
+          try {
+            const auto change = setHostname(order.hostname());
+            result.set_ok(change.ok);
+            result.set_error(change.error);
+          } catch (const std::exception& ex) {
+            result.set_ok(false);
+            result.set_error(ex.what());
+          }
+          if (result.ok()) {
+            spdlog::info("hostname changed to {}", order.hostname());
+          } else {
+            spdlog::warn("hostname change to {} failed: {}", order.hostname(), result.error());
+          }
+          net::post(self->ioc_, [self, result]() {
+            if (self->connected_) {
+              self->send(makeEnvelope(::highcube::HOSTNAME_RESULT, result));
+            }
+          });
         }).detach();
       }
       break;

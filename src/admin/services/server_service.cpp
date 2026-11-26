@@ -1,6 +1,7 @@
 #include "services/services.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -10,10 +11,40 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace highcube::admin {
 namespace {
+
+// Display name -> RFC 1123 hostname label: "Sigma Server_2" -> "sigma-server-2".
+std::string toHostname(std::string name) {
+  static const std::pair<const char*, const char*> kAccents[] = {
+      {"á", "a"}, {"é", "e"}, {"í", "i"}, {"ó", "o"}, {"ú", "u"}, {"ü", "u"}, {"ñ", "n"},
+      {"Á", "a"}, {"É", "e"}, {"Í", "i"}, {"Ó", "o"}, {"Ú", "u"}, {"Ü", "u"}, {"Ñ", "n"},
+  };
+  for (const auto& [from, to] : kAccents) {
+    const std::string needle(from);
+    for (auto pos = name.find(needle); pos != std::string::npos; pos = name.find(needle, pos + 1)) {
+      name.replace(pos, needle.size(), to);
+    }
+  }
+  std::string out;
+  for (const unsigned char c : name) {
+    if (std::isalnum(c) && c < 128) {
+      out.push_back(static_cast<char>(std::tolower(c)));
+    } else if (!out.empty() && out.back() != '-') {
+      out.push_back('-');
+    }
+  }
+  if (out.size() > 63) {
+    out.resize(63);
+  }
+  while (!out.empty() && out.back() == '-') {
+    out.pop_back();
+  }
+  return out;
+}
 
 std::string isoUtc(std::chrono::system_clock::time_point tp) {
   const auto tt = std::chrono::system_clock::to_time_t(tp);
@@ -384,6 +415,7 @@ nlohmann::json ServerService::update(int64_t id, const nlohmann::json& body) {
     throw std::runtime_error("Server not found");
   }
   const auto previousIp = server->ip;
+  const auto previousName = server->name;
   if (body.contains("name")) {
     const auto name = body.at("name").get<std::string>();
     if (name.empty()) {
@@ -422,7 +454,31 @@ nlohmann::json ServerService::update(int64_t id, const nlohmann::json& body) {
       }
     }
   }
-  return serverToJson(*ctx_.repos->findServerById(id));
+  auto reply = serverToJson(*ctx_.repos->findServerById(id));
+  if (server->name != previousName) {
+    const auto hostname = toHostname(server->name);
+    nlohmann::json change = {{"hostname", hostname}};
+    if (hostname.empty()) {
+      change["status"] = "invalid";
+    } else {
+      const auto requestId =
+          ctx_.agentHub ? ctx_.agentHub->startHostnameChange(id, hostname) : std::string{};
+      change["status"] = requestId.empty() ? "offline" : "sent";
+      if (!requestId.empty()) {
+        change["requestId"] = requestId;
+      }
+    }
+    reply["hostnameChange"] = change;
+  }
+  return reply;
+}
+
+nlohmann::json ServerService::hostnameChange(int64_t id, const std::string& requestId) {
+  if (!ctx_.agentHub) {
+    return {{"status", "unknown"}};
+  }
+  const auto poll = ctx_.agentHub->pollHostnameChange(requestId, id);
+  return {{"status", poll.status}, {"hostname", poll.hostname}, {"error", poll.error}};
 }
 
 nlohmann::json ServerService::updateAgent(int64_t id) {

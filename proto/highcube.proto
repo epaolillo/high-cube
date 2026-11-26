@@ -28,6 +28,7 @@ enum MessageKind {
   DB_MANAGE = 14;
   QUICK_COMMAND = 15;
   VPN_APPLY = 16;
+  SET_HOSTNAME = 17;
 
   // Agent -> Admin
   REGISTER = 100;
@@ -46,6 +47,7 @@ enum MessageKind {
   QUICK_COMMAND_RESULT = 113;
   CPU_ATTRIBUTION = 114;
   VPN_STATUS = 115;
+  HOSTNAME_RESULT = 116;
 }
 
 message VolumeSpec {
@@ -285,4 +287,19 @@ message VpnApply {
 // payload_json: {"publicKey", "up", "lanIp", "dump" (peer lines of wg show dump), "error"}.
 message VpnStatus {
   string payload_json = 1;
+}
+
+// Admin -> Agent: rename the host after the server was renamed in the panel.
+// hostname is already a valid RFC 1123 label; the agent validates it again.
+message SetHostname {
+  string correlation_id = 1;
+  string hostname = 2;
+}
+
+// Agent -> Admin: outcome of SetHostname.
+message HostnameResult {
+  string correlation_id = 1;
+  bool ok = 2;
+  string hostname = 3;
+  string error = 4;
 }

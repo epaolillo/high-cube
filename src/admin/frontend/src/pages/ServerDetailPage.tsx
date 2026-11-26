@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom';
 import api from '../api/client';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
+import { followHostnameChange, toHostname } from '../components/serverHostname';
 import { type AnalysisRequest, QuickCommandsPanel } from '../components/serverAudit/QuickCommandsPanel';
 import { ContainerCpuChart } from '../components/serverMetrics/ContainerCpuChart';
 import { connectTerminal, type TerminalMode, type TerminalTransport } from '../terminal/transport';
@@ -405,6 +406,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
     consoleCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const [editForm] = Form.useForm();
+  const editName = Form.useWatch('name', editForm) as string | undefined;
 
   useEffect(() => {
     if (!id) return undefined;
@@ -727,11 +729,17 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           const { data } = await api.patch(`/servers/${id}`, values);
           setServer((current) => (current ? { ...current, name: data.name, ip: data.ip } : current));
           message.success(t('saved'));
+          followHostnameChange(t, id, data.hostnameChange);
           setEditing(false);
         }}
       >
         <Form form={editForm} layout="vertical">
-          <Form.Item name="name" label={t('name')} rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t('name')}
+            rules={[{ required: true }]}
+            extra={t('hostnameHint', { hostname: toHostname(editName || '') || '—' })}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="ip" label="IP / hostname" rules={[{ required: true }]}>

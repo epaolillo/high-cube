@@ -351,6 +351,13 @@ void AgentHub::onMessage(AgentSession::Pointer session, const ::highcube::Envelo
       }
       break;
     }
+    case ::highcube::HOSTNAME_RESULT: {
+      ::highcube::HostnameResult msg;
+      if (msg.ParseFromString(envelope.payload())) {
+        handleHostnameResult(session, msg);
+      }
+      break;
+    }
     case ::highcube::TERMINAL_OUTPUT: {
       ::highcube::TerminalOutput msg;
       if (msg.ParseFromString(envelope.payload())) {
@@ -428,6 +435,65 @@ bool AgentHub::sendVpnApply(int64_t serverId, const std::string& configJson) {
   order.set_config_json(configJson);
   session->send(makeEnvelope(::highcube::VPN_APPLY, order));
   return true;
+}
+
+std::string AgentHub::startHostnameChange(int64_t serverId, const std::string& hostname) {
+  auto session = sessionForServer(serverId);
+  if (!session) {
+    return {};
+  }
+  const std::string requestId =
+      "hn-" + std::to_string(++hostnameSeq_) + "-" + std::to_string(serverId);
+  {
+    std::lock_guard lock(mutex_);
+    const auto now = std::chrono::steady_clock::now();
+    for (auto it = hostnameChanges_.begin(); it != hostnameChanges_.end();) {
+      if (now - it->second.createdAt > std::chrono::minutes(10)) {
+        it = hostnameChanges_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    hostnameChanges_[requestId] = HostnameEntry{serverId, hostname, false, false, {}, now};
+  }
+  ::highcube::SetHostname order;
+  order.set_correlation_id(requestId);
+  order.set_hostname(hostname);
+  session->send(makeEnvelope(::highcube::SET_HOSTNAME, order));
+  return requestId;
+}
+
+AgentHub::HostnamePoll AgentHub::pollHostnameChange(const std::string& requestId, int64_t serverId) {
+  std::lock_guard lock(mutex_);
+  auto it = hostnameChanges_.find(requestId);
+  if (it == hostnameChanges_.end() || it->second.serverId != serverId) {
+    return {"unknown", {}, {}};
+  }
+  const auto& entry = it->second;
+  if (entry.done) {
+    return {entry.ok ? "ok" : "error", entry.hostname, entry.error};
+  }
+  // An agent with an older build ignores SET_HOSTNAME and never answers.
+  if (std::chrono::steady_clock::now() - entry.createdAt > std::chrono::seconds(45)) {
+    return {"timeout", entry.hostname, "The agent did not answer. Update the agent and retry."};
+  }
+  return {"pending", entry.hostname, {}};
+}
+
+void AgentHub::handleHostnameResult(AgentSession::Pointer session, const ::highcube::HostnameResult& msg) {
+  std::lock_guard lock(mutex_);
+  auto it = hostnameChanges_.find(msg.correlation_id());
+  if (it == hostnameChanges_.end() || it->second.serverId != session->serverId()) {
+    return;
+  }
+  it->second.done = true;
+  it->second.ok = msg.ok();
+  it->second.error = msg.error();
+  if (msg.ok()) {
+    spdlog::info("server {} hostname changed to {}", session->serverId(), msg.hostname());
+  } else {
+    spdlog::warn("server {} hostname change failed: {}", session->serverId(), msg.error());
+  }
 }
 
 void AgentHub::handleHeartbeat(AgentSession::Pointer session) {

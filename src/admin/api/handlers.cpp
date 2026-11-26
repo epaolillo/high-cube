@@ -283,6 +283,11 @@ void registerHandlers(Router& router, AppContext& ctx) {
                         ServerService(ctx).update(std::stoll(c.params["id"]),
                                                   nlohmann::json::parse(c.request.body())));
   });
+  router.add("GET", "/api/servers/:id/hostname-change/:requestId", true, [&](RequestContext& c) {
+    if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
+    return jsonResponse(http::status::ok, ServerService(ctx).hostnameChange(std::stoll(c.params["id"]),
+                                                                             c.params["requestId"]));
+  });
   router.add("POST", "/api/servers/:id/agent-update", true, [&](RequestContext& c) {
     if (!requireAdmin(c, ctx)) return errorResponse(http::status::forbidden, "Forbidden");
     return jsonResponse(http::status::accepted, ServerService(ctx).updateAgent(std::stoll(c.params["id"])));

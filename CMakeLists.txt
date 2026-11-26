@@ -127,6 +127,7 @@ set(AGENT_SOURCES
   src/agent/audit/actions.cpp
   src/agent/logs/log_streamer.cpp
   src/agent/vpn/vpn_manager.cpp
+  src/agent/system/hostname.cpp
   src/agent/terminal/terminal_session.cpp
   src/agent/bootstrap/bootstrap.cpp
 )

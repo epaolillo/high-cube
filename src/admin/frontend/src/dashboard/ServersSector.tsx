@@ -14,6 +14,7 @@ import { confirmDestructive } from '../components/confirmDestructive';
 import { confirmRegenerateToken } from '../components/confirmRegenerateToken';
 import { AppIcon, IconEditor } from '../components/IconEditor';
 import { MetricDisplay } from '../components/MetricDisplay';
+import { followHostnameChange, toHostname } from '../components/serverHostname';
 import { useDashboardState } from './DashboardState';
 import { ServerFooter, ServerSpecs, ServerTraffic, type ServerCardMetrics } from './ServerCardParts';
 import { useServerFilter } from './ServerFilter';
@@ -69,6 +70,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
   const [modal, setModal] = useState<{ id?: number } | null>(null);
   const [iconEdit, setIconEdit] = useState<ServerRow | null>(null);
   const [form] = Form.useForm();
+  const watchedName = Form.useWatch('name', form) as string | undefined;
 
   useEffect(() => {
     setServersParams(q);
@@ -96,8 +98,9 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
   const submit = async () => {
     const values = await form.validateFields();
     if (modal?.id) {
-      await api.patch(`/servers/${modal.id}`, values);
+      const { data } = await api.patch(`/servers/${modal.id}`, values);
       message.success(t('saved'));
+      followHostnameChange(t, modal.id, data.hostnameChange);
       setModal(null);
       refresh();
     } else {
@@ -336,7 +339,12 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label={t('name')} rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t('name')}
+            rules={[{ required: true }]}
+            extra={modal?.id ? t('hostnameHint', { hostname: toHostname(watchedName || '') || '—' }) : undefined}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="ip" label="IP / hostname" rules={[{ required: true }]}>

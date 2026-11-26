@@ -131,6 +131,15 @@ public:
   // False when the agent is not connected; it receives the config again when it registers.
   bool sendVpnApply(int64_t serverId, const std::string& configJson);
 
+  // Host rename after the server is renamed in the panel. Empty id when the agent is offline.
+  struct HostnamePoll {
+    std::string status;  // pending | ok | error | timeout | unknown
+    std::string hostname;
+    std::string error;
+  };
+  std::string startHostnameChange(int64_t serverId, const std::string& hostname);
+  HostnamePoll pollHostnameChange(const std::string& requestId, int64_t serverId);
+
   net::io_context& ioContext() { return ioc_; }
 
 private:
@@ -146,6 +155,7 @@ private:
   void handleQuickCommandResult(AgentSession::Pointer session, const ::highcube::QuickCommandResult& msg);
   void handleProcessSnapshot(AgentSession::Pointer session, const ::highcube::ProcessSnapshot& msg);
   void handleCpuAttribution(AgentSession::Pointer session, const ::highcube::CpuAttribution& msg);
+  void handleHostnameResult(AgentSession::Pointer session, const ::highcube::HostnameResult& msg);
   void applyDbManageEffect(const DbManageEffect& effect, const std::string& resultJson);
   void finishDbWaiter(const std::string& requestId, std::uint64_t waiterId);
   void handleDeploymentLog(const ::highcube::DeploymentLog& msg);
@@ -220,6 +230,17 @@ private:
   };
   std::unordered_map<std::string, QuickCommandEntry> quickCommands_;
   std::atomic<std::uint64_t> quickCommandSeq_{0};
+
+  struct HostnameEntry {
+    int64_t serverId = 0;
+    std::string hostname;
+    bool done = false;
+    bool ok = false;
+    std::string error;
+    std::chrono::steady_clock::time_point createdAt;
+  };
+  std::unordered_map<std::string, HostnameEntry> hostnameChanges_;
+  std::atomic<std::uint64_t> hostnameSeq_{0};
 
   std::string agentBinaryPath_;
   struct AgentBinaryTicket {
