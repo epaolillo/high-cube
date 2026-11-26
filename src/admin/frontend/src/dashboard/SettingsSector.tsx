@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, RocketOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import { Form, Input, InputNumber, List, Modal, Progress, Select, Tag, Tooltip, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -108,7 +108,7 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
       showCancelButton: true,
       confirmButtonText: t('redeployAllConfirmOk'),
       cancelButtonText: t('cancel'),
-      confirmButtonColor: '#635BFF',
+      confirmButtonColor: '#E2621F',
       cancelButtonColor: '#8898AA',
       focusCancel: true,
     });
@@ -165,20 +165,20 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
   ).length;
 
   return (
-    <section className="hc-sector hc-sector--settings">
+    <section className="hc-sector hc-sector--settings rt-panel">
       <div className="hc-sector__head">
         <span className="hc-sector__title">{t('settings')}</span>
-        <span className="hc-sector__count">{total}</span>
+        <span className="hc-sector__count rt-key rt-key--badge">{total}</span>
         <span className="hc-sector__spacer" />
         {!readOnly && (
           <>
-            <button type="button" className="hc-ghostbtn" onClick={startRedeployAll}>
-              <RocketOutlined />
+            <button type="button" className="hc-ghostbtn rt-btn" onClick={startRedeployAll}>
+              <SyncOutlined />
               {t('redeployAllShort')}
             </button>
             <button
               type="button"
-              className="hc-addbtn"
+              className="hc-addbtn rt-btn rt-btn--orange"
               onClick={() => {
                 domainForm.resetFields();
                 setDomainOpen(true);
@@ -194,28 +194,22 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
       {!readOnly && (
         <>
           {/* Metrics retention */}
-          <div className="hc-row">
-            <div className="hc-row__head">
-              <div className="hc-readout">
-                <b>{ttl ?? '—'}</b>
-                <span>{t('metricsTtl')}</span>
-              </div>
-              <span className="hc-sector__spacer" />
-              <div className="hc-acts">
-                <Tooltip title={t('edit')}>
-                  <button
-                    type="button"
-                    className="hc-iconbtn"
-                    onClick={() => setMetricsModal({ ttl: ttl ?? 7 })}
-                  >
-                    <EditOutlined />
-                  </button>
-                </Tooltip>
-              </div>
-            </div>
+          <div className="hc-readout rt-lcd">
+            <b className="hc-readout__value rt-lcd-text">{ttl ?? '—'}</b>
+            <span className="hc-readout__label rt-lcd-text">{t('metricsTtl')}</span>
+            <img className="hc-readout__chart" src="/retro/decor/lcd-chart.png" alt="" />
+            <Tooltip title={t('edit')}>
+              <button
+                type="button"
+                className="hc-iconbtn rt-btn rt-btn--icon rt-btn--terminal"
+                onClick={() => setMetricsModal({ ttl: ttl ?? 7 })}
+              >
+                <EditOutlined />
+              </button>
+            </Tooltip>
           </div>
 
-          <div className="hc-bulkbar">
+          <div className="hc-bulkbar rt-inset">
             <span>{t('selectedCount', { count: sel.size })}</span>
             <span className="hc-bulkbar__spacer" />
             <button
@@ -239,11 +233,11 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
           <div className="hc-sector__empty">—</div>
         ) : (
           rows.map((d) => (
-            <div className={readOnly ? 'hc-row hc-row--muted' : 'hc-row'} key={d.id}>
+            <div className={`hc-row hc-domain-row rt-lcd${readOnly ? ' hc-row--muted' : ''}`} key={d.id}>
               <div className="hc-row__head">
                 <input
                   type="checkbox"
-                  className="hc-row__check"
+                  className="hc-row__check rt-check"
                   disabled={readOnly}
                   checked={sel.has(d.id)}
                   onChange={() => toggle(d.id)}
@@ -264,7 +258,7 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
                     <Tooltip title={t('accessPoint')}>
                       <button
                         type="button"
-                        className="hc-iconbtn"
+                        className="hc-iconbtn rt-btn rt-btn--icon rt-btn--terminal"
                         onClick={() => {
                           accessForm.setFieldsValue({ accessServerId: d.accessServerId ?? undefined });
                           setAccessEdit(d);
@@ -276,7 +270,7 @@ export function SettingsSector({ readOnly = false }: { readOnly?: boolean }) {
                     <Tooltip title={t('delete')}>
                       <button
                         type="button"
-                        className="hc-iconbtn"
+                        className="hc-iconbtn rt-btn rt-btn--icon rt-btn--terminal"
                         data-tone="danger"
                         onClick={() => void removeDomain(d)}
                       >

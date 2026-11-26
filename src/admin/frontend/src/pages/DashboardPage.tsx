@@ -1,3 +1,4 @@
+import { DownOutlined } from '@ant-design/icons';
 import { Drawer, Dropdown } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +16,7 @@ import ProfilePage from './ProfilePage';
 import ServerDetailPage from './ServerDetailPage';
 import UserDetailPage from './UserDetailPage';
 import VpnPage from '../vpn/VpnPage';
+import '../retro/retro.css';
 import '../dashboard/dashboard.css';
 import '../vpn/vpn.css';
 
@@ -78,16 +80,24 @@ export default function DashboardPage() {
       <ServerFilterProvider>
       <div className="hc-dash">
         <div className="hc-dash__bar">
+          <img className="hc-dash__monitor" src="/retro/illustrations/logo-monitor.png" alt="" />
           <div className="hc-dash__brand">
-            <img src="/logo.png" alt="" />
-            <span>{t('appName')}</span>
+            <span className="hc-dash__wordmark">{t('appName')}</span>
             <small>{t('controlPlane')}</small>
           </div>
+          <span className="hc-dash__stripes rt-stripes" aria-hidden="true" />
+          <span className="hc-dash__vent" aria-hidden="true" />
+          <img className="hc-dash__cassette" src="/retro/illustrations/cassette.png" alt="" />
           <div className="hc-dash__spacer" />
+          <span className="hc-dash__lamps rt-lcd" aria-hidden="true">
+            <span className="rt-lamp" data-color="orange" />
+            <span className="rt-lamp" data-color="yellow" />
+            <span className="rt-lamp" data-color="orange" />
+          </span>
           {isAdmin && (
             <button
               type="button"
-              className="hc-dash__navbtn"
+              className="hc-dash__navbtn rt-btn rt-btn--dark"
               data-active={drawer?.kind === 'vpn'}
               onClick={() => setDrawer({ kind: 'vpn' })}
             >
@@ -103,10 +113,11 @@ export default function DashboardPage() {
               ],
             }}
           >
-            <div className="hc-dash__user">
-              <span className="hc-dash__avatar">{userInitial}</span>
+            <button type="button" className="hc-dash__user rt-btn rt-btn--bezel">
+              <span className="hc-dash__avatar rt-key rt-key--purple">{userInitial}</span>
               <span>{profile?.email || profile?.name}</span>
-            </div>
+              <DownOutlined />
+            </button>
           </Dropdown>
         </div>
 

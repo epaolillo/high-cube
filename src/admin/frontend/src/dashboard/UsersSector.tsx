@@ -5,7 +5,7 @@ import {
   EditOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { Form, Input, Modal, Select, Tag, Tooltip, message } from 'antd';
+import { Form, Input, Modal, Select, Tooltip, message } from 'antd';
 // Note: sort field is intentionally not sent; the list endpoint only supports `order`.
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -65,15 +65,15 @@ export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; 
   };
 
   return (
-    <section className="hc-sector hc-sector--users">
+    <section className="hc-sector hc-sector--users rt-panel">
       <div className="hc-sector__head">
         <span className="hc-sector__title">{t('users')}</span>
-        <span className="hc-sector__count">{total}</span>
+        <span className="hc-sector__count rt-key rt-key--badge">{total}</span>
         <span className="hc-sector__spacer" />
         {!readOnly && (
           <button
             type="button"
-            className="hc-addbtn"
+            className="hc-addbtn rt-btn rt-btn--orange"
             onClick={() => {
               form.resetFields();
               setCreateOpen(true);
@@ -87,11 +87,11 @@ export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; 
 
       {!readOnly && (
         <>
-          <div className="hc-controls">
+          <div className="hc-controls hc-controls--tray rt-inset">
             <Tooltip title={order === 'asc' ? 'ASC' : 'DESC'}>
               <button
                 type="button"
-                className="hc-iconbtn"
+                className="hc-iconbtn rt-btn rt-btn--icon"
                 onClick={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
               >
                 {order === 'asc' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
@@ -99,7 +99,7 @@ export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; 
             </Tooltip>
           </div>
 
-          <div className="hc-bulkbar">
+          <div className="hc-bulkbar rt-inset">
             <span>{t('selectedCount', { count: sel.size })}</span>
             <span className="hc-bulkbar__spacer" />
             <button
@@ -123,17 +123,17 @@ export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; 
           <div className="hc-sector__empty">—</div>
         ) : (
           rows.map((u) => (
-            <div className="hc-row" key={u.id}>
+            <div className="hc-row rt-raised" key={u.id}>
               <div className="hc-row__head">
                 {!readOnly && (
                   <input
                     type="checkbox"
-                    className="hc-row__check"
+                    className="hc-row__check rt-check"
                     checked={sel.has(u.id)}
                     onChange={() => toggle(u.id)}
                   />
                 )}
-                <span className="hc-avatar-sq">{(u.name || u.email || 'U').slice(0, 1).toUpperCase()}</span>
+                <span className="hc-avatar-sq rt-key rt-key--purple">{(u.name || u.email || 'U').slice(0, 1).toUpperCase()}</span>
                 <span className="hc-row__name" title={u.name || u.email}>
                   {u.name || u.email}
                 </span>
@@ -144,18 +144,20 @@ export function UsersSector({ readOnly = false, onOpen }: { readOnly?: boolean; 
                     aria-label={onlineIds.has(u.id) ? t('presenceOnline') : t('presenceOffline')}
                   />
                 </Tooltip>
-                <Tag style={{ margin: 0 }}>{t(`roles.${u.role}`, { defaultValue: u.role })}</Tag>
+                <span className="hc-role rt-btn rt-btn--sm rt-btn--static">
+                  {t(`roles.${u.role}`, { defaultValue: u.role })}
+                </span>
                 {!readOnly && (
                   <div className="hc-acts">
                     <Tooltip title={t('edit')}>
-                      <button type="button" className="hc-iconbtn" onClick={() => onOpen(u.id)}>
+                      <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => onOpen(u.id)}>
                         <EditOutlined />
                       </button>
                     </Tooltip>
                     <Tooltip title={t('delete')}>
                       <button
                         type="button"
-                        className="hc-iconbtn"
+                        className="hc-iconbtn rt-btn rt-btn--icon"
                         data-tone="danger"
                         onClick={() => void removeOne(u)}
                       >

@@ -2,7 +2,7 @@ import { Tooltip } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-type Variant = 'light' | 'dark';
+type Variant = 'light' | 'dark' | 'retro' | 'phosphor';
 
 type Props = {
   cpuPercent?: number;
@@ -45,6 +45,8 @@ type Palette = {
   gpu: string;
   vram: string;
   labelStopped: string;
+  /** Fixed meter label color; when unset each label takes its meter color. */
+  label?: string;
 };
 
 const PALETTES: Record<Variant, Palette> = {
@@ -85,6 +87,46 @@ const PALETTES: Record<Variant, Palette> = {
     gpu: '#C2410C',
     vram: '#0E7490',
     labelStopped: '#8898AA',
+  },
+  // Retro variants sit inside rt-inset / rt-lcd frames that paint the background.
+  retro: {
+    bg: 'transparent',
+    border: 'transparent',
+    ledRunning: '#3D9A2C',
+    ledDeploying: '#D98A12',
+    ledStopped: '#B3A68E',
+    replicas: '#6C5D49',
+    clockRunning: '#3D9A2C',
+    clockStopped: '#B3A68E',
+    numberRunning: '#2B2118',
+    numberStopped: '#9C8E78',
+    segOff: '#D2C6AE',
+    cpu: '#3D9A2C',
+    mem: '#3D9A2C',
+    disk: '#D9A21E',
+    gpu: '#E0702A',
+    vram: '#3D9A2C',
+    labelStopped: '#9C8E78',
+    label: '#2B2118',
+  },
+  phosphor: {
+    bg: 'transparent',
+    border: 'transparent',
+    ledRunning: '#8FF55A',
+    ledDeploying: '#F2B01E',
+    ledStopped: '#2E4424',
+    replicas: '#5F9E3E',
+    clockRunning: '#8FF55A',
+    clockStopped: '#4F8A35',
+    numberRunning: '#8FF55A',
+    numberStopped: '#4F8A35',
+    segOff: '#24331C',
+    cpu: '#8FF55A',
+    mem: '#8FF55A',
+    disk: '#F2B01E',
+    gpu: '#FF8A3D',
+    vram: '#8FF55A',
+    labelStopped: '#4F8A35',
   },
 };
 
@@ -326,7 +368,7 @@ export function MetricDisplay({
     meters.forEach((meter, index) => {
       const y = rowTop + index * ROW_PITCH;
       // Label glyph.
-      drawText(ctx, meter.label, 1, y, running ? meter.color : pal.labelStopped);
+      drawText(ctx, meter.label, 1, y, running ? (pal.label ?? meter.color) : pal.labelStopped);
       // Readout, right-aligned.
       drawText(ctx, meter.text, vw - 1 - measure(meter.text), y, numberColor);
       // Horizontal LED meter, filled left to right.

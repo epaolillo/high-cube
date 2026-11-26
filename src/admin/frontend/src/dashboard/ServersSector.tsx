@@ -4,6 +4,7 @@ import {
   EditOutlined,
   KeyOutlined,
   PlusOutlined,
+  SearchOutlined,
   SlidersOutlined,
 } from '@ant-design/icons';
 import { Form, Input, Modal, Tooltip, Typography, message } from 'antd';
@@ -19,6 +20,8 @@ import { useDashboardState } from './DashboardState';
 import { ServerFooter, ServerSpecs, ServerTraffic, type ServerCardMetrics } from './ServerCardParts';
 import { useServerFilter } from './ServerFilter';
 import type { ServerVpnIndicator } from '../vpn/types';
+
+const DEFAULT_SERVER_ICON = '/retro/illustrations/server-tower.png';
 
 type ServerMetrics = ServerCardMetrics & {
   cpuPercent?: number;
@@ -145,13 +148,13 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
   };
 
   return (
-    <section className="hc-sector hc-sector--servers">
+    <section className="hc-sector hc-sector--servers rt-panel">
       <div className="hc-sector__head">
         <span className="hc-sector__title">{t('servers')}</span>
-        <span className="hc-sector__count">{total}</span>
+        <span className="hc-sector__count rt-key rt-key--badge">{total}</span>
         <span className="hc-sector__spacer" />
         {!readOnly && (
-          <button type="button" className="hc-addbtn" onClick={addServer}>
+          <button type="button" className="hc-addbtn rt-btn rt-btn--orange" onClick={addServer}>
             <PlusOutlined />
             {t('create')}
           </button>
@@ -162,16 +165,17 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
         <>
           <div className="hc-controls">
             <Input
-              className="hc-search"
+              className="hc-search rt-inset"
               size="small"
               allowClear
-              placeholder={t('name')}
+              prefix={<SearchOutlined />}
+              placeholder={`${t('name')}...`}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
 
-          <div className="hc-bulkbar">
+          <div className="hc-bulkbar rt-inset">
             <span>{t('selectedCount', { count: sel.size })}</span>
             <span className="hc-bulkbar__spacer" />
             <button
@@ -195,12 +199,12 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
           <div className="hc-sector__empty">—</div>
         ) : (
           rows.map((s) => (
-            <div className="hc-row hc-card" key={s.id}>
+            <div className="hc-row hc-card rt-raised" key={s.id}>
               <div className="hc-row__head">
                 {!readOnly && (
                   <input
                     type="checkbox"
-                    className="hc-row__check"
+                    className="hc-row__check rt-check"
                     checked={sel.has(s.id)}
                     onChange={() => toggle(s.id)}
                   />
@@ -208,7 +212,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                 <span className="hc-dot" data-on={s.status === 'online'} />
                 {readOnly ? (
                   <span className="hc-row-icon hc-row-icon--lg" style={{ cursor: 'default' }}>
-                    <AppIcon icon={s.icon} name={s.name} size={60} />
+                    <AppIcon icon={s.icon || DEFAULT_SERVER_ICON} name={s.name} size={60} />
                   </span>
                 ) : (
                   <Tooltip title={t('iconEditTitle')}>
@@ -218,7 +222,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                       aria-label={t('iconEditTitle')}
                       onClick={() => setIconEdit(s)}
                     >
-                      <AppIcon icon={s.icon} name={s.name} size={60} />
+                      <AppIcon icon={s.icon || DEFAULT_SERVER_ICON} name={s.name} size={60} />
                     </button>
                   </Tooltip>
                 )}
@@ -229,12 +233,12 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                   {!readOnly &&
                     (s.vpn?.routedAddress ? (
                       <Tooltip title={t('serverIpViaVpn', { ip: s.ip })}>
-                        <span className="hc-card__ip" data-vpn="true">
+                        <span className="hc-card__ip rt-lcd rt-lcd-text" data-vpn="true">
                           {s.vpn.routedAddress}
                         </span>
                       </Tooltip>
                     ) : (
-                      s.ip && <span className="hc-card__ip">{s.ip}</span>
+                      s.ip && <span className="hc-card__ip rt-lcd rt-lcd-text">{s.ip}</span>
                     ))}
                 </span>
                 {!readOnly && (
@@ -244,7 +248,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                         <span>
                           <button
                             type="button"
-                            className="hc-iconbtn"
+                            className="hc-iconbtn rt-btn rt-btn--icon"
                             disabled={s.status !== 'online'}
                             onClick={() => updateAgent(s)}
                           >
@@ -253,24 +257,24 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                         </span>
                       </Tooltip>
                       <Tooltip title={t('edit')}>
-                        <button type="button" className="hc-iconbtn" onClick={() => editServer(s)}>
+                        <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => editServer(s)}>
                           <EditOutlined />
                         </button>
                       </Tooltip>
                       <Tooltip title={t('open')}>
-                        <button type="button" className="hc-iconbtn" onClick={() => onOpen(s.id)}>
+                        <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => onOpen(s.id)}>
                           <SlidersOutlined />
                         </button>
                       </Tooltip>
                       <Tooltip title={t('regenerateToken')}>
-                        <button type="button" className="hc-iconbtn" onClick={() => regenerate(s)}>
+                        <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => regenerate(s)}>
                           <KeyOutlined />
                         </button>
                       </Tooltip>
                       <Tooltip title={t('delete')}>
                         <button
                           type="button"
-                          className="hc-iconbtn"
+                          className="hc-iconbtn rt-btn rt-btn--icon"
                           data-tone="danger"
                           onClick={() => void removeOne(s)}
                         >
@@ -283,7 +287,7 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                 <Tooltip title={t('filterByServer')}>
                   <input
                     type="checkbox"
-                    className="hc-row__filter"
+                    className="hc-row__filter rt-toggle"
                     checked={isOn(s.id)}
                     onChange={() => toggleFilter(s.id)}
                     aria-label={t('filterByServer')}
@@ -291,8 +295,9 @@ export function ServersSector({ readOnly = false, onOpen }: { readOnly?: boolean
                 </Tooltip>
               </div>
               <ServerSpecs metrics={s.metrics} />
-              <div className="hc-row__metric">
+              <div className="hc-row__metric rt-inset">
                 <MetricDisplay
+                  variant="retro"
                   showHeader={false}
                   cpuPercent={s.metrics?.cpuPercent}
                   memoryUsedBytes={s.metrics?.memoryUsedBytes}

@@ -1,0 +1,337 @@
+/*
+ * Cassette-futurism UI kit. Every skin is a 9-slice PNG from /public/retro,
+ * applied with border-image so a single asset fits any width and height.
+ * Assets are 2x; slice values below are in image pixels, widths in CSS pixels.
+ * Regenerate the PNGs with scripts/retro-assets/*.py.
+ */
+
+:root {
+  --rt-ink: #2b2118;
+  --rt-ink-soft: #6c5d49;
+  --rt-ink-faint: #a08a70;
+  --rt-cream: #e7cdb0;
+  --rt-plate: #f2dfc6;
+  --rt-well: #dcc3a5;
+  --rt-orange: #e2621f;
+  --rt-orange-ink: #d4571a;
+  --rt-paper-text: #fbf3e2;
+  --rt-lcd-bg: #121a0e;
+  --rt-lcd-text: #8ff55a;
+  --rt-lcd-dim: #4f8a35;
+  --rt-font: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --rt-font-lcd: 'VT323', 'Share Tech Mono', ui-monospace, monospace;
+}
+
+/* Load every alternate state up front so the first hover or press never flickers. */
+html::after {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  z-index: -1;
+  content: url(/retro/buttons/btn-cream-hover.png) url(/retro/buttons/btn-cream-active.png)
+    url(/retro/buttons/btn-orange-hover.png) url(/retro/buttons/btn-orange-active.png)
+    url(/retro/buttons/btn-dark-hover.png) url(/retro/buttons/btn-dark-active.png)
+    url(/retro/buttons/btn-bezel-hover.png) url(/retro/buttons/btn-bezel-active.png)
+    url(/retro/buttons/btn-terminal-hover.png) url(/retro/buttons/btn-terminal-active.png)
+    url(/retro/controls/checkbox-checked.png) url(/retro/controls/toggle-checked.png);
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+/*
+ * Physical key. The art includes a 5px ring/shadow margin drawn outside the box
+ * (border-image-outset) and a 2px lip at the bottom, so content sits 1px high
+ * and drops when the key is pressed.
+ */
+.rt-btn {
+  --rt-btn-normal: url(/retro/buttons/btn-cream-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-cream-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-cream-active.png);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 28px;
+  margin: 0;
+  padding: 0 10px 2px;
+  border: 1px solid transparent;
+  border-image-source: var(--rt-btn-normal);
+  border-image-slice: 24 fill;
+  border-image-width: 12px;
+  border-image-outset: 5px;
+  border-image-repeat: stretch;
+  background: none;
+  color: var(--rt-ink);
+  font-family: var(--rt-font);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.rt-btn:hover {
+  border-image-source: var(--rt-btn-hover);
+}
+.rt-btn:active,
+.rt-btn[aria-pressed='true'],
+.rt-btn[data-active='true'] {
+  border-image-source: var(--rt-btn-active);
+  padding-top: 1px;
+  padding-bottom: 0;
+}
+.rt-btn:focus-visible {
+  outline: 2px solid rgba(226, 98, 31, 0.7);
+  outline-offset: 4px;
+}
+.rt-btn:disabled,
+.rt-btn[aria-disabled='true'] {
+  border-image-source: var(--rt-btn-normal);
+  padding: 0 10px 2px;
+  filter: grayscale(0.6) opacity(0.5);
+  cursor: not-allowed;
+}
+/* Read-only indicator drawn as a key (status, category). */
+.rt-btn--static,
+.rt-btn--static:hover,
+.rt-btn--static:active {
+  border-image-source: var(--rt-btn-normal);
+  padding-top: 0;
+  padding-bottom: 2px;
+  cursor: default;
+}
+
+.rt-btn--orange {
+  --rt-btn-normal: url(/retro/buttons/btn-orange-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-orange-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-orange-active.png);
+  color: var(--rt-paper-text);
+  text-shadow: 0 -1px 0 rgba(90, 30, 6, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.rt-btn--dark {
+  --rt-btn-normal: url(/retro/buttons/btn-dark-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-dark-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-dark-active.png);
+  color: #f1e8d6;
+  text-shadow: 0 -1px 0 #000;
+}
+/* Dark key in a thick cream bezel: the ring is 2.6px, so keep a little extra air. */
+.rt-btn--bezel {
+  --rt-btn-normal: url(/retro/buttons/btn-bezel-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-bezel-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-bezel-active.png);
+  color: #f1e8d6;
+  text-shadow: 0 -1px 0 #000;
+}
+.rt-btn--terminal {
+  --rt-btn-normal: url(/retro/buttons/btn-terminal-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-terminal-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-terminal-active.png);
+  color: var(--rt-lcd-text);
+  text-shadow: 0 0 4px rgba(143, 245, 90, 0.55);
+}
+.rt-btn--icon {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 0 2px;
+  font-size: 14px;
+}
+.rt-btn--icon:active,
+.rt-btn--icon[aria-pressed='true'],
+.rt-btn--icon[data-active='true'] {
+  padding: 1px 0 0;
+}
+.rt-btn--icon:disabled {
+  padding: 0 0 2px;
+}
+.rt-btn--sm {
+  height: 22px;
+  padding: 0 8px 2px;
+  font-size: 11px;
+}
+
+/* --------------------------------------------------------------- surfaces */
+
+/* Cream metal panel with a groove and corner screws. */
+.rt-panel {
+  border: 6px solid transparent;
+  border-image: url(/retro/frames/frame-panel.png) 32 / 16px stretch;
+  border-radius: 10px;
+  background: url(/retro/textures/tex-grain.png) repeat, var(--rt-cream);
+  background-clip: padding-box;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.35),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* Raised plate. Tint with --rt-plate. */
+.rt-raised {
+  border: 1px solid transparent;
+  border-image: url(/retro/frames/frame-raised.png) 16 / 8px stretch;
+  border-radius: 6px;
+  background: url(/retro/textures/tex-grain.png) repeat, var(--rt-plate);
+  box-shadow: 0 2px 3px rgba(40, 24, 8, 0.28);
+}
+
+/* Recessed well. Tint with --rt-well. */
+.rt-inset {
+  border: 1px solid transparent;
+  border-image: url(/retro/frames/frame-inset.png) 16 / 8px stretch;
+  border-radius: 5px;
+  background: url(/retro/textures/tex-grain.png) repeat, var(--rt-well);
+}
+
+/* Phosphor screen behind dark glass. */
+.rt-lcd {
+  border: 2px solid transparent;
+  border-image: url(/retro/frames/frame-lcd.png) 18 / 9px stretch;
+  border-radius: 6px;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    radial-gradient(ellipse at 50% 0%, rgba(143, 245, 90, 0.08), transparent 70%),
+    var(--rt-lcd-bg);
+  color: var(--rt-lcd-text);
+}
+.rt-lcd-text {
+  font-family: var(--rt-font-lcd);
+  color: var(--rt-lcd-text);
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.5);
+}
+
+/* Fully rounded status pill. Tint with --rt-pill. */
+.rt-pill {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-image: url(/retro/frames/frame-pill.png) 24 / 11px stretch;
+  border-radius: 999px;
+  background: var(--rt-pill, var(--rt-plate));
+  color: var(--rt-ink);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(40, 24, 8, 0.25);
+}
+
+/* Small solid keys: count badges and letter avatars. */
+.rt-key {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-image: url(/retro/keys/key-graphite.png) 18 fill / 9px / 4px stretch;
+  background: none;
+  color: #f6eedd;
+  font-family: var(--rt-font);
+  font-weight: 800;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.45);
+  padding-bottom: 2px;
+}
+.rt-key--badge {
+  border-image-source: url(/retro/keys/key-badge.png);
+  padding-bottom: 1px;
+}
+.rt-key--purple {
+  border-image-source: url(/retro/keys/key-purple.png);
+}
+
+/* -------------------------------------------------------------- controls */
+
+.rt-check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  background: url(/retro/controls/checkbox.png) center / 18px 18px no-repeat;
+  cursor: pointer;
+}
+.rt-check:checked {
+  background-image: url(/retro/controls/checkbox-checked.png);
+}
+.rt-check:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.rt-check:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rt-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  background: url(/retro/controls/toggle.png) center / 22px 22px no-repeat;
+  cursor: pointer;
+}
+.rt-toggle:checked {
+  background-image: url(/retro/controls/toggle-checked.png);
+}
+.rt-toggle:hover {
+  filter: brightness(1.06);
+}
+.rt-toggle:active {
+  transform: translateY(1px);
+}
+
+/* Round LED. The art has room for the glow, so the box is twice the lens. */
+.rt-led {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  background: url(/retro/controls/led-off.png) center / 16px 16px no-repeat;
+}
+.rt-led[data-color='green'] {
+  background-image: url(/retro/controls/led-green.png);
+}
+.rt-led[data-color='amber'] {
+  background-image: url(/retro/controls/led-amber.png);
+}
+.rt-led[data-color='red'] {
+  background-image: url(/retro/controls/led-red.png);
+}
+
+.rt-lamp {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background: url(/retro/controls/lamp-off.png) center / 24px 24px no-repeat;
+}
+.rt-lamp[data-color='orange'] {
+  background-image: url(/retro/controls/lamp-orange.png);
+}
+.rt-lamp[data-color='yellow'] {
+  background-image: url(/retro/controls/lamp-yellow.png);
+}
+
+/* ----------------------------------------------------------------- decor */
+
+.rt-stripes {
+  display: block;
+  background: url(/retro/decor/stripes.png) no-repeat center / contain;
+}
+.rt-stripes--mini {
+  background-image: url(/retro/decor/stripes-mini.png);
+}
+.rt-vent {
+  display: block;
+  background: url(/retro/decor/vent.png) no-repeat center / contain;
+}

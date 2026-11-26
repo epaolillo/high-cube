@@ -89,16 +89,16 @@ export function ApplicationsSector({
       });
     });
   return (
-    <section className="hc-sector hc-sector--applications">
+    <section className="hc-sector hc-sector--applications rt-panel">
       <div className="hc-sector__head">
         <span className="hc-sector__title">{t('applications')}</span>
-        <span className="hc-sector__count">{total}</span>
+        <span className="hc-sector__count rt-key rt-key--badge">{total}</span>
         <span className="hc-sector__spacer" />
-        <button type="button" className="hc-ghostbtn" onClick={onOpenIntegrations}>
+        <button type="button" className="hc-ghostbtn rt-btn" onClick={onOpenIntegrations}>
           <GithubOutlined />
           {t('integrations')}
         </button>
-        <button type="button" className="hc-addbtn" onClick={() => setCreateOpen(true)}>
+        <button type="button" className="hc-addbtn rt-btn rt-btn--orange" onClick={() => setCreateOpen(true)}>
           <PlusOutlined />
           {t('create')}
         </button>
@@ -107,7 +107,7 @@ export function ApplicationsSector({
       <div className="hc-controls">
         <Select
           size="small"
-          className="hc-search"
+          className="hc-search rt-inset"
           value={category}
           onChange={setCategory}
           options={APP_CATEGORIES.map((def) => ({
@@ -123,7 +123,7 @@ export function ApplicationsSector({
         <Tooltip title={order === 'asc' ? 'ASC' : 'DESC'}>
           <button
             type="button"
-            className="hc-iconbtn"
+            className="hc-iconbtn rt-btn rt-btn--icon"
             onClick={() => setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
           >
             {order === 'asc' ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
@@ -145,7 +145,7 @@ export function ApplicationsSector({
                   : [];
             const categoryDef = getAppCategory(a.type);
             return (
-              <div className="hc-row" key={a.id}>
+              <div className="hc-row hc-app rt-raised" key={a.id}>
                 <div className="hc-row__head">
                   <Tooltip title={t('iconEditTitle')}>
                     <button
@@ -162,13 +162,13 @@ export function ApplicationsSector({
                   </span>
                   <div className="hc-acts">
                     <Tooltip title={t(categoryDef.labelKey)}>
-                      <span className="hc-iconbtn" data-status="meta" aria-label={t(categoryDef.labelKey)}>
+                      <span className="hc-iconbtn rt-btn rt-btn--icon rt-btn--static" data-status="meta" aria-label={t(categoryDef.labelKey)}>
                         {cloneElement(categoryDef.icon as ReactElement)}
                       </span>
                     </Tooltip>
                     <Tooltip title={t(`runtimeStatus_${status}`)}>
                       <span
-                        className="hc-iconbtn"
+                        className="hc-iconbtn rt-btn rt-btn--icon rt-btn--static"
                         data-status={status}
                         aria-label={t(`runtimeStatus_${status}`)}
                       >
@@ -176,19 +176,19 @@ export function ApplicationsSector({
                       </span>
                     </Tooltip>
                     <Tooltip title={t('deploy')}>
-                      <button type="button" className="hc-iconbtn" onClick={() => void deployOne(a.id)}>
+                      <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => void deployOne(a.id)}>
                         <RocketOutlined />
                       </button>
                     </Tooltip>
                     <Tooltip title={t('open')}>
-                      <button type="button" className="hc-iconbtn" onClick={() => onOpen(a.id)}>
+                      <button type="button" className="hc-iconbtn rt-btn rt-btn--icon" onClick={() => onOpen(a.id)}>
                         <SlidersOutlined />
                       </button>
                     </Tooltip>
                     <Tooltip title={t('delete')}>
                       <button
                         type="button"
-                        className="hc-iconbtn"
+                        className="hc-iconbtn rt-btn rt-btn--icon"
                         data-tone="danger"
                         onClick={() => void removeOne(a)}
                       >
@@ -197,8 +197,9 @@ export function ApplicationsSector({
                     </Tooltip>
                   </div>
                 </div>
-                <div className="hc-row__metric">
+                <div className="hc-row__metric rt-lcd">
                   <MetricDisplay
+                    variant="phosphor"
                     cpuPercent={a.cpuPercent}
                     memoryUsedBytes={a.memoryUsedBytes}
                     memoryLimitBytes={a.memoryLimitBytes}

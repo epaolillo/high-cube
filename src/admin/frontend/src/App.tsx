@@ -5,7 +5,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import GithubCallbackPage from './pages/GithubCallbackPage';
 import GithubSetupPage from './pages/GithubSetupPage';
-import { stripeTheme } from './theme';
+import { retroTheme } from './theme';
 import './i18n';
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
@@ -16,7 +16,7 @@ function PrivateRoute({ children }: { children: JSX.Element }) {
 
 export default function App() {
   return (
-    <ConfigProvider theme={stripeTheme}>
+    <ConfigProvider theme={retroTheme}>
       <AuthProvider>
         <BrowserRouter>
           <Routes>

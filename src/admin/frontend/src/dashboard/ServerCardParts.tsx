@@ -91,7 +91,7 @@ export function ServerSpecs({ metrics }: { metrics?: ServerCardMetrics }) {
     diskTotal && diskTotal > 0 ? Math.round(((metrics?.diskUsedBytes || 0) / diskTotal) * 100) : undefined;
 
   return (
-    <div className="hc-card__specs">
+    <div className="hc-card__specs rt-inset">
       <Tooltip title={threads ? t('cardCpuSpec', { cores, threads }) : undefined}>
         <span className="hc-card__spec" data-kind="cpu">
           <CpuGlyph />
@@ -150,7 +150,7 @@ export function ServerTraffic({ metrics, online }: { metrics?: ServerCardMetrics
     <div className="hc-card__traffic">
       {boxes.map((box) => (
         <Tooltip key={box.key} title={online && !known ? t('cardNoNetData') : box.hint}>
-          <div className="hc-card__net" data-dir={box.key} data-off={!known}>
+          <div className="hc-card__net rt-inset" data-dir={box.key} data-off={!known}>
             <span className="hc-card__net-label">
               {box.icon}
               {box.label}
@@ -187,7 +187,7 @@ export function ServerFooter({
                 : t('vpnDisconnected')
           }
         >
-          <span className="hc-card__pill" data-vpn={vpnState}>
+          <span className="hc-card__pill rt-pill" data-vpn={vpnState}>
             <SafetyOutlined />
             VPN
             <span className="hc-card__pill-dot" />
@@ -195,7 +195,7 @@ export function ServerFooter({
         </Tooltip>
       )}
       <Tooltip title={t('cardHostUptime')}>
-        <span className="hc-card__pill">
+        <span className="hc-card__pill rt-pill">
           <ClockCircleOutlined />
           <span className="hc-card__pill-label">{t('uptime')}</span>
           <b>{online ? uptimeText(metrics?.uptimeSeconds) : '—'}</b>
@@ -203,7 +203,7 @@ export function ServerFooter({
       </Tooltip>
       {vpn?.member && (
         <Tooltip title={t('cardPeersHint', { up: vpn.peersUp ?? 0, total: vpn.peersTotal ?? 0 })}>
-          <span className="hc-card__pill">
+          <span className="hc-card__pill rt-pill">
             <ApartmentOutlined />
             <span className="hc-card__pill-label">{t('cardPeers')}</span>
             <b>{vpn.peersTotal ?? 0}</b>
