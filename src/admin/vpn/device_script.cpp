@@ -344,8 +344,25 @@ HELPER
 chown root:root /usr/local/sbin/hc-vpn-helper
 chmod 755 /usr/local/sbin/hc-vpn-helper
 
-AGENT_USER=$(systemctl show -p User --value hc-agent 2>/dev/null || true)
-if [ -n "$AGENT_USER" ] && [ "$AGENT_USER" != root ]; then
+# hc-agent runs either as a system unit (User=...) or as a systemd --user unit.
+agent_user() {
+  local uid unit_file
+  uid=$(ps -C hc-agent -o uid= 2>/dev/null | head -n1 | tr -d ' ')
+  if [ -n "$uid" ]; then id -nu "$uid"; return; fi
+  if [ "$(systemctl show -p LoadState --value hc-agent 2>/dev/null)" = loaded ]; then
+    uid=$(systemctl show -p User --value hc-agent 2>/dev/null)
+    echo "${uid:-root}"
+    return
+  fi
+  for unit_file in /home/*/.config/systemd/user/hc-agent.service /root/.config/systemd/user/hc-agent.service; do
+    if [ -f "$unit_file" ]; then stat -c %U "$unit_file"; return; fi
+  done
+}
+
+AGENT_USER=$(agent_user || true)
+[ -n "$AGENT_USER" ] || die "hc-agent was not found on this server. Install the agent first, then run this command again."
+
+if [ "$AGENT_USER" != root ]; then
   say "Allowing $AGENT_USER (hc-agent) to run the helper"
   RULE=$(mktemp)
   # The agent polls the helper every few seconds: keep those calls out of the auth log.
@@ -354,9 +371,11 @@ if [ -n "$AGENT_USER" ] && [ "$AGENT_USER" != root ]; then
   visudo -cf "$RULE" >/dev/null || { rm -f "$RULE"; die "Invalid sudoers rule"; }
   install -m 440 -o root -g root "$RULE" /etc/sudoers.d/highcube-vpn
   rm -f "$RULE"
+  runuser -u "$AGENT_USER" -- sudo -n /usr/local/sbin/hc-vpn-helper check >/dev/null 2>&1 \
+    || die "$AGENT_USER still cannot run the helper without a password. Check /etc/sudoers.d/highcube-vpn."
 fi
 
-say "Done. hc-agent joins the VPN within a few seconds."
+say "Done. hc-agent ($AGENT_USER) joins the VPN within a few seconds."
 )HCSH";
 
 void replaceAll(std::string& text, const std::string& from, const std::string& to) {
