@@ -1055,3 +1055,224 @@
   padding: 1px 0 0;
   border-image-source: url(/retro/buttons/btn-cream-active.png);
 }
+
+/* ------------------------------------------------ application config panels */
+
+/* Config sections read like labeled hardware modules: heavy titles, dark copy, screens for status. */
+.hc-drawer .hc-cfg {
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.35),
+    0 6px 14px rgba(30, 18, 6, 0.4) !important;
+}
+.hc-drawer .hc-cfg h5.ant-typography {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #1d140c;
+  font-size: 19px;
+  font-weight: 900;
+  font-stretch: 90%;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.hc-drawer .hc-cfg h5.ant-typography::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 34px;
+  height: 17px;
+  background: url(/retro/decor/stripes-mini.png) center / contain no-repeat;
+}
+.hc-drawer .hc-cfg .ant-typography.ant-typography-secondary,
+.hc-drawer .hc-cfg .ant-form-item-extra {
+  color: #3f2f20 !important;
+  font-family: var(--rt-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.hc-drawer .hc-cfg .ant-form-item-label > label {
+  color: #1d140c;
+  font-family: var(--rt-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.hc-drawer .hc-cfg .ant-tag {
+  border-color: #6e5640;
+  font-family: var(--rt-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Collapsed section that opens an editor: a full-width bar with a play caret. */
+.hc-drawer .hc-cfg--bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hc-drawer .hc-cfg--bar:hover {
+  filter: brightness(1.04);
+}
+.hc-drawer .hc-cfg--bar:active {
+  transform: translateY(1px);
+}
+.hc-drawer .hc-cfg--bar:focus-visible {
+  outline: 2px solid var(--rt-orange);
+  outline-offset: 2px;
+}
+.hc-drawer .hc-cfg__caret {
+  color: #1d140c;
+  font-size: 18px;
+}
+
+/* Warnings and notices inside config sections are phosphor screens with a lamp icon. */
+.hc-drawer .hc-cfg .ant-alert {
+  --hc-alert: #8ff55a;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 8px solid transparent;
+  border-image: url(/retro/frames/frame-screen-bezel.png) 32 / 16px stretch;
+  border-radius: 8px;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    radial-gradient(ellipse at 50% 40%, #1d2c16 0%, #0e160a 80%, #070b05 100%);
+  background-clip: padding-box;
+  box-shadow: none;
+  color: #c8ffa8;
+}
+.hc-drawer .hc-cfg .ant-alert-warning {
+  --hc-alert: #ffb347;
+}
+.hc-drawer .hc-cfg .ant-alert-error {
+  --hc-alert: #ff5a3a;
+}
+.hc-drawer .hc-cfg .ant-alert .ant-alert-icon {
+  color: var(--hc-alert);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--hc-alert) 60%, transparent));
+}
+.hc-drawer .hc-cfg .ant-alert-with-description .ant-alert-icon {
+  align-self: stretch;
+  margin-inline-end: 16px;
+  padding: 4px 16px 0 2px;
+  border-right: 2px solid color-mix(in srgb, var(--hc-alert) 60%, transparent);
+  font-size: 34px;
+}
+.hc-drawer .hc-cfg .ant-alert .ant-alert-message {
+  color: var(--hc-alert);
+  font-family: var(--rt-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--hc-alert) 50%, transparent);
+  text-transform: uppercase;
+}
+.hc-drawer .hc-cfg .ant-alert .ant-alert-description {
+  color: #c8ffa8;
+  font-family: var(--rt-font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-shadow: 0 0 4px rgba(143, 245, 90, 0.3);
+}
+
+/* List of servers rendered on a phosphor screen. */
+.hc-drawer .hc-cfg-screen {
+  padding: 4px 0;
+}
+.hc-drawer .hc-cfg-screen__name {
+  flex: 1;
+  color: var(--rt-lcd-text);
+  font-family: var(--rt-font-lcd);
+  font-size: 20px;
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.45);
+}
+.hc-drawer .hc-cfg-screen .ant-tag {
+  --rt-chip: var(--rt-lcd-dim);
+  margin: 0;
+  border-color: var(--rt-chip);
+  background: color-mix(in srgb, var(--rt-chip) 10%, transparent);
+  box-shadow: none;
+  color: var(--rt-chip);
+  font-family: var(--rt-font-lcd);
+  font-size: 16px;
+  font-weight: 400;
+  text-shadow: 0 0 5px color-mix(in srgb, var(--rt-chip) 50%, transparent);
+}
+.hc-drawer .hc-cfg-screen .ant-tag-success {
+  --rt-chip: var(--rt-lcd-text);
+}
+
+/* OFF / ON rocker: both legends printed on the housing, a ribbed slider between them. */
+.hc-drawer .hc-rocker.ant-switch,
+.hc-drawer .hc-rocker.ant-switch.ant-switch-checked {
+  width: 116px;
+  min-width: 116px;
+  height: 34px;
+  border: 1px solid #1a130c;
+  border-radius: 6px;
+  background:
+    linear-gradient(#0b0f08, #141b10) center / 52px 22px no-repeat,
+    linear-gradient(#4a3a2a, #241b12) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 0 0 2px #ead8bd,
+    0 0 0 3px #9c7f60,
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.hc-drawer .hc-rocker .ant-switch-handle {
+  top: 5px;
+  width: 26px;
+  height: 22px;
+  inset-inline-start: 33px !important;
+}
+.hc-drawer .hc-rocker.ant-switch-checked .ant-switch-handle {
+  inset-inline-start: 55px !important;
+}
+.hc-drawer .hc-rocker .ant-switch-handle::before,
+.hc-drawer .hc-rocker:active .ant-switch-handle::before {
+  inset: 0 !important;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 5px, rgba(60, 40, 20, 0.22) 5px 6px) center / 16px 12px no-repeat,
+    linear-gradient(#fffaf0, #cdb491);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+.hc-drawer .hc-rocker .ant-switch-inner {
+  position: absolute;
+  inset: 0;
+  padding: 0 !important;
+}
+.hc-drawer .hc-rocker .ant-switch-inner :is(.ant-switch-inner-checked, .ant-switch-inner-unchecked) {
+  position: absolute;
+  top: 0;
+  display: block;
+  width: 32px;
+  margin: 0 !important;
+  color: #7a6a58;
+  font-family: var(--rt-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 32px;
+  text-align: center;
+}
+.hc-drawer .hc-rocker .ant-switch-inner .ant-switch-inner-unchecked {
+  left: 1px;
+}
+.hc-drawer .hc-rocker .ant-switch-inner .ant-switch-inner-checked {
+  right: 1px;
+}
+.hc-drawer .hc-rocker:not(.ant-switch-checked) .ant-switch-inner-unchecked {
+  color: #ffb347;
+  text-shadow: 0 0 5px rgba(255, 170, 60, 0.6);
+}
+.hc-drawer .hc-rocker.ant-switch-checked .ant-switch-inner-checked {
+  color: #8ff55a;
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.7);
+}

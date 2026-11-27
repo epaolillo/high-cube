@@ -1,4 +1,4 @@
-import { DeleteOutlined, StopOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, DeleteOutlined, HolderOutlined, StopOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -1488,7 +1488,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         />
       </div>
 
-      <div style={{ ...cardStyle, marginBottom: 16 }}>
+      <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
         <div
           style={{
             display: 'flex',
@@ -1627,7 +1627,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         </Modal>
       </div>
 
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
+        <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
           <Typography.Title level={5} style={{ marginTop: 0 }}>
             {t('domainSettings')}
           </Typography.Title>
@@ -1828,7 +1828,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         </div>
 
       {isAdmin && (
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
+        <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
           <div
             style={{
               display: 'flex',
@@ -1838,7 +1838,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               flexWrap: 'wrap',
             }}
           >
-            <div>
+            <div style={{ flex: '1 1 320px' }}>
               <Typography.Title level={5} style={{ margin: 0 }}>
                 {t('useGpu')}
               </Typography.Title>
@@ -1847,6 +1847,9 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               </Typography.Text>
             </div>
             <Switch
+              className="hc-rocker"
+              checkedChildren="ON"
+              unCheckedChildren="OFF"
               checked={useGpu}
               onChange={(checked) => {
                 useGpuDirty.current = true;
@@ -1857,7 +1860,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         </div>
       )}
 
-      <div style={{ ...cardStyle, marginBottom: 16 }}>
+      <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
         <div
           style={{
             display: 'flex',
@@ -2074,24 +2077,28 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         </Space>
       </div>
 
-      <div style={{ marginBottom: 16 }}>
-        <Button
-          onClick={() => {
-            const env = app.env || {};
-            setEnvText(
-              Object.entries(env)
-                .map(([k, v]) => `${k}=${v}`)
-                .join('\n'),
-            );
-            setEnvOpen(true);
-          }}
-        >
+      <button
+        type="button"
+        className="hc-cfg hc-cfg--bar"
+        style={{ ...cardStyle, marginBottom: 16 }}
+        onClick={() => {
+          const env = app.env || {};
+          setEnvText(
+            Object.entries(env)
+              .map(([k, v]) => `${k}=${v}`)
+              .join('\n'),
+          );
+          setEnvOpen(true);
+        }}
+      >
+        <Typography.Title level={5} style={{ margin: 0 }}>
           {t('envVariables')}
-        </Button>
-      </div>
+        </Typography.Title>
+        <CaretRightOutlined className="hc-cfg__caret" />
+      </button>
 
       {isAdmin && (
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
+        <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
           <Typography.Title level={5} style={{ marginTop: 0 }}>
             {t('deployServers')}
           </Typography.Title>
@@ -2101,7 +2108,8 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
           {targetRows.length === 0 ? (
             <Typography.Text type="secondary">{t('deployServersEmpty')}</Typography.Text>
           ) : (
-            targetRows.map((row, index) => (
+            <div className="hc-cfg-screen" style={retroScreen}>
+            {targetRows.map((row, index) => (
               <div
                 key={row.id}
                 draggable
@@ -2122,15 +2130,13 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                   display: 'flex',
                   alignItems: 'center',
                   gap: 12,
-                  padding: '8px 4px',
-                  borderTop: '1px solid #C9AC88',
+                  padding: '6px 12px',
+                  borderTop: index === 0 ? 'none' : '1px dashed rgba(143, 245, 90, 0.18)',
                   cursor: 'grab',
-                  background: dragIndex === index ? 'rgba(226, 98, 31, 0.1)' : 'transparent',
+                  background: dragIndex === index ? 'rgba(143, 245, 90, 0.1)' : 'transparent',
                 }}
               >
-                <span aria-hidden style={{ color: 'var(--rt-ink-faint)', width: 16 }}>
-                  ::
-                </span>
+                <HolderOutlined aria-hidden style={{ color: 'var(--rt-lcd-dim)', fontSize: 16 }} />
                 <Checkbox
                   checked={row.enabled}
                   onChange={(event) => {
@@ -2141,17 +2147,18 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                     );
                   }}
                 />
-                <span style={{ flex: 1 }}>{row.name}</span>
+                <span className="hc-cfg-screen__name">{row.name}</span>
                 <Tag color={row.status === 'online' ? 'success' : undefined}>{row.status}</Tag>
                 <input type="hidden" name={`targetPriority-${row.id}`} value={index} readOnly />
               </div>
-            ))
+            ))}
+            </div>
           )}
         </div>
       )}
 
       {isAdmin && (
-        <div style={{ ...cardStyle, marginBottom: 16 }}>
+        <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
           <Typography.Title level={5} style={{ marginTop: 0 }}>
             {t('scale')}
           </Typography.Title>
@@ -2229,7 +2236,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         </div>
       )}
 
-      <div style={{ ...cardStyle, marginBottom: 16 }}>
+      <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           {t('serversRunning')}
         </Typography.Title>
@@ -2279,7 +2286,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         />
       </div>
 
-      <div style={{ ...cardStyle, marginBottom: 16 }}>
+      <div className="hc-cfg" style={{ ...cardStyle, marginBottom: 16 }}>
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           {t('historicalMetrics')}
         </Typography.Title>
