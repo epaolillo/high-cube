@@ -215,10 +215,10 @@
 
 /* Wall art that stays pinned to the bottom of the panel while rows scroll over it. */
 .hc-sector--settings > .hc-sector__body {
-  background: url(/retro/illustrations/poster-dish.png) no-repeat center bottom 18px / min(88%, 212px) auto;
+  background: url(/retro/illustrations/poster-dish.png) no-repeat center bottom 26px / min(78%, 210px) auto;
 }
 .hc-sector--users > .hc-sector__body {
-  background: url(/retro/illustrations/retro-computer.png) no-repeat right -6px bottom 0 / min(100%, 206px) auto;
+  background: url(/retro/illustrations/retro-computer.png) no-repeat right 10px bottom 6px / min(86%, 220px) auto;
 }
 
 .hc-scroll::-webkit-scrollbar {
