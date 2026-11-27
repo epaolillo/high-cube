@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import api from '../api/client';
 import i18n from '../i18n';
+import { retroCard } from '../retro/styles';
 import { DeviceEnrollModal } from '../vpn/DeviceEnrollModal';
 
 export default function ProfilePage() {
@@ -15,10 +16,10 @@ export default function ProfilePage() {
 
   return (
     <div style={{ maxWidth: 480 }}>
-      <Typography.Title level={3} style={{ color: '#0A2540' }}>
+      <Typography.Title level={3} style={{ color: 'var(--rt-ink)' }}>
         {t('profile')}
       </Typography.Title>
-      <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+      <div style={retroCard}>
         <Form
           layout="vertical"
           initialValues={{ name: profile.name, locale: profile.locale || 'en' }}
@@ -45,8 +46,8 @@ export default function ProfilePage() {
         </Form>
       </div>
       {isAdmin && (
-        <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24, marginTop: 16 }}>
-          <Typography.Title level={5} style={{ color: '#0A2540', marginTop: 0 }}>
+        <div style={{ ...retroCard, marginTop: 14 }}>
+          <Typography.Title level={5} style={{ color: 'var(--rt-ink)', marginTop: 0 }}>
             {t('vpn')}
           </Typography.Title>
           <Typography.Paragraph type="secondary">{t('vpnProfileHint')}</Typography.Paragraph>

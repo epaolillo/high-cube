@@ -22,8 +22,8 @@ export async function confirmDestructive(t: TFunction, options: ConfirmOptions =
     showCancelButton: true,
     confirmButtonText: options.confirmText ?? t('delete'),
     cancelButtonText: t('cancel'),
-    confirmButtonColor: options.danger === false ? '#635BFF' : '#E5484D',
-    cancelButtonColor: '#8898AA',
+    confirmButtonColor: options.danger === false ? '#E2621F' : '#C2391A',
+    cancelButtonColor: '#A08A70',
     focusCancel: true,
     // Keep the confirmation above Ant Design modals (zIndex 1000), otherwise it
     // renders behind the open form and cannot be clicked.

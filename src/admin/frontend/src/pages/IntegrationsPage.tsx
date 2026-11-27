@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { DataTable } from '../components/DataTable';
+import { retroCard } from '../retro/styles';
 
 type GithubApp = {
   id: number;
@@ -77,12 +78,12 @@ export default function IntegrationsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="hc-head-panel" style={{ ...retroCard, marginBottom: 14 }}>
         <div>
-          <Typography.Title level={3} style={{ margin: 0, color: '#0A2540' }}>
+          <Typography.Title level={3} style={{ margin: 0, color: 'var(--rt-ink)' }}>
             {t('integrations')}
           </Typography.Title>
-          <Typography.Paragraph style={{ color: '#425466' }}>
+          <Typography.Paragraph style={{ color: 'var(--rt-ink-soft)', margin: '4px 0 0' }}>
             {t('integrationsSubtitle')}
           </Typography.Paragraph>
         </div>
@@ -90,7 +91,7 @@ export default function IntegrationsPage() {
           {t('registerGithubApp')}
         </Button>
       </div>
-      <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+      <div style={retroCard}>
         <DataTable<GithubApp>
           endpoint="/github-apps"
           refreshKey={refreshKey}

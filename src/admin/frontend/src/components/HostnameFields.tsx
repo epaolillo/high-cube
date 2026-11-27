@@ -85,9 +85,9 @@ export function HostnameFields({
             style={{
               marginBottom: 12,
               padding: 12,
-              border: '1px solid #E3E8EE',
+              border: '1px solid #C9AC88',
               borderRadius: 8,
-              background: '#FAFBFC',
+              background: '#F3E3CC',
             }}
           >
             <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>

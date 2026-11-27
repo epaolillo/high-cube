@@ -1,4 +1,3 @@
-import { Column, DualAxes, Line } from '@ant-design/charts';
 import { DeleteOutlined, StopOutlined } from '@ant-design/icons';
 import {
   Alert,
@@ -43,15 +42,13 @@ import { BaseDomainOption, HostnameFields, HostnameRow } from '../components/Hos
 import { suggestHostPath, VolumeFields } from '../components/VolumeFields';
 import { connectTerminalTarget, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 import '@xterm/xterm/css/xterm.css';
+import { RetroLineChart } from '../retro/RetroLineChart';
+import { RetroStatScreen } from '../retro/RetroStatScreen';
+import { retroCard, retroScreen, retroTerminalTheme } from '../retro/styles';
 
 dayjs.extend(relativeTime);
 
-const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #E3E8EE',
-  borderRadius: 8,
-  padding: 24,
-};
+const cardStyle = retroCard;
 
 type PortProtocol = 'tcp' | 'udp' | 'both';
 
@@ -248,6 +245,17 @@ function formatBytes(value: number) {
   return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+// Enough decimals to keep small axis ticks apart.
+function axisNumber(value: number) {
+  return value.toFixed(value === 0 || value >= 10 ? 0 : value >= 1 ? 1 : 2);
+}
+
+// Position of the current value against the recent peak, for the readout meters.
+function relativeLevel(current: number | undefined, history: number[]) {
+  const peak = Math.max(current ?? 0, ...history);
+  return peak > 0 ? (current ?? 0) / peak : 0;
+}
+
 function shortSha(sha?: string) {
   if (!sha) return '—';
   return sha.slice(0, 12);
@@ -326,12 +334,7 @@ function ContainerTerminal({
       scrollback: 5000,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 13,
-      theme: {
-        background: '#0A2540',
-        foreground: '#E6EDF5',
-        cursor: '#635BFF',
-        selectionBackground: 'rgba(99, 91, 255, 0.35)',
-      },
+      theme: retroTerminalTheme,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -418,8 +421,7 @@ function ContainerTerminal({
       <div
         style={{
           minHeight: 280,
-          background: '#F6F9FC',
-          color: '#697386',
+          ...retroScreen,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -428,10 +430,12 @@ function ContainerTerminal({
         }}
       >
         <div>
-          <Typography.Title level={5} style={{ color: '#697386', marginTop: 0 }}>
+          <div className="rt-lcd-text" style={{ fontSize: 22 }}>
             {t('noShell')}
-          </Typography.Title>
-          <Typography.Text type="secondary">{t('noShellHint')}</Typography.Text>
+          </div>
+          <div className="rt-lcd-text" style={{ fontSize: 17, opacity: 0.7 }}>
+            {t('noShellHint')}
+          </div>
         </div>
       </div>
     );
@@ -440,7 +444,14 @@ function ContainerTerminal({
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', minHeight: 280, overflow: 'hidden', boxSizing: 'border-box' }}
+      style={{
+        width: '100%',
+        minHeight: 280,
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+        padding: 8,
+        background: retroTerminalTheme.background,
+      }}
     />
   );
 }
@@ -558,8 +569,9 @@ function DeploymentsTab({
               children: (
                 <div
                   style={{
-                    border: failed ? '1px solid #F5222D' : '1px solid #E3E8EE',
-                    background: failed ? '#FFF1F0' : '#fff',
+                    border: failed ? '1px solid #C2391A' : '1px solid #B89A76',
+                    background: failed ? 'linear-gradient(#FDE8E0, #F8D3C6)' : 'linear-gradient(#FBF1E2, #F1DEC2)',
+                    boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 2px rgba(60, 40, 20, 0.2)',
                     borderRadius: 8,
                     padding: 16,
                     marginBottom: 8,
@@ -622,7 +634,7 @@ function DeploymentsTab({
                       </Button>
                     </Space>
                   </div>
-                  <Typography.Text strong style={{ display: 'block', color: failed ? '#CF1322' : '#0A2540' }}>
+                  <Typography.Text strong style={{ display: 'block', color: failed ? '#B8321A' : 'var(--rt-ink)' }}>
                     {shortSha(deployment.gitSha)}
                     {deployment.gitMessage ? ` — ${deployment.gitMessage}` : ''}
                   </Typography.Text>
@@ -630,7 +642,7 @@ function DeploymentsTab({
                     {t('branch')}: {branch}
                   </Typography.Text>
                   {failed && (
-                    <Typography.Paragraph style={{ color: '#CF1322', marginBottom: 0, marginTop: 8 }}>
+                    <Typography.Paragraph style={{ color: '#B8321A', marginBottom: 0, marginTop: 8 }}>
                       {t('deploymentFailed')}
                     </Typography.Paragraph>
                   )}
@@ -650,14 +662,14 @@ function DeploymentsTab({
       >
         <pre
           style={{
-            background: isFailureStatus(logStatus) ? '#FFF1F0' : '#0A2540',
-            color: isFailureStatus(logStatus) ? '#CF1322' : '#E6EDF5',
-            border: isFailureStatus(logStatus) ? '1px solid #F5222D' : 'none',
-            borderRadius: 8,
+            ...retroScreen,
+            color: isFailureStatus(logStatus) ? '#FF7A5A' : 'var(--rt-lcd-text)',
+            fontFamily: 'var(--rt-font-lcd)',
+            fontSize: 17,
+            lineHeight: 1.2,
             padding: 16,
             maxHeight: '60vh',
             overflow: 'auto',
-            fontSize: 12,
             whiteSpace: 'pre-wrap',
           }}
         >
@@ -1455,28 +1467,25 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: 16,
-          marginBottom: 16,
+          gap: 14,
+          marginBottom: 14,
         }}
       >
-        <div style={cardStyle}>
-          <Typography.Text type="secondary">{t('consumption')} · {t('cpu')}</Typography.Text>
-          <Typography.Title level={3} style={{ margin: '8px 0' }}>
-            {latest?.cpuPercent === undefined ? '—' : `${latest.cpuPercent.toFixed(1)}%`}
-          </Typography.Title>
-        </div>
-        <div style={cardStyle}>
-          <Typography.Text type="secondary">{t('memory')}</Typography.Text>
-          <Typography.Title level={3} style={{ margin: '8px 0' }}>
-            {latest?.memoryUsedBytes === undefined ? '—' : formatBytes(latest.memoryUsedBytes)}
-          </Typography.Title>
-        </div>
-        <div style={cardStyle}>
-          <Typography.Text type="secondary">{t('disk')}</Typography.Text>
-          <Typography.Title level={3} style={{ margin: '8px 0' }}>
-            {latest?.diskUsedBytes === undefined ? '—' : formatBytes(latest.diskUsedBytes)}
-          </Typography.Title>
-        </div>
+        <RetroStatScreen
+          label={`${t('consumption')} · ${t('cpu')}`}
+          value={latest?.cpuPercent === undefined ? '—' : `${latest.cpuPercent.toFixed(1)}%`}
+          level={(latest?.cpuPercent ?? 0) / 100}
+        />
+        <RetroStatScreen
+          label={t('memory')}
+          value={latest?.memoryUsedBytes === undefined ? '—' : formatBytes(latest.memoryUsedBytes)}
+          level={relativeLevel(latest?.memoryUsedBytes, series.map((point) => point.memoryUsedBytes))}
+        />
+        <RetroStatScreen
+          label={t('disk')}
+          value={latest?.diskUsedBytes === undefined ? '—' : formatBytes(latest.diskUsedBytes)}
+          level={relativeLevel(latest?.diskUsedBytes, series.map((point) => point.diskUsedBytes))}
+        />
       </div>
 
       <div style={{ ...cardStyle, marginBottom: 16 }}>
@@ -1801,12 +1810,10 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                   style={{
                     marginTop: 12,
                     padding: 12,
-                    background: '#0A2540',
-                    color: '#E8EEF4',
-                    borderRadius: 8,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                    fontSize: 12,
-                    lineHeight: 1.55,
+                    ...retroScreen,
+                    fontFamily: 'var(--rt-font-lcd)',
+                    fontSize: 17,
+                    lineHeight: 1.2,
                     maxHeight: 420,
                     overflow: 'auto',
                     whiteSpace: 'pre-wrap',
@@ -2116,12 +2123,12 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                   alignItems: 'center',
                   gap: 12,
                   padding: '8px 4px',
-                  borderTop: '1px solid #E3E8EE',
+                  borderTop: '1px solid #C9AC88',
                   cursor: 'grab',
-                  background: dragIndex === index ? '#F6F9FC' : 'transparent',
+                  background: dragIndex === index ? 'rgba(226, 98, 31, 0.1)' : 'transparent',
                 }}
               >
-                <span aria-hidden style={{ color: '#8898AA', width: 16 }}>
+                <span aria-hidden style={{ color: 'var(--rt-ink-faint)', width: 16 }}>
                   ::
                 </span>
                 <Checkbox
@@ -2135,7 +2142,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
                   }}
                 />
                 <span style={{ flex: 1 }}>{row.name}</span>
-                <Tag>{row.status}</Tag>
+                <Tag color={row.status === 'online' ? 'success' : undefined}>{row.status}</Tag>
                 <input type="hidden" name={`targetPriority-${row.id}`} value={index} readOnly />
               </div>
             ))
@@ -2276,35 +2283,47 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           {t('historicalMetrics')}
         </Typography.Title>
-        {chartData.length < 2 ? (
-          <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
-        ) : (
-          <div style={{ display: 'grid', gap: 24 }}>
-            <div>
-              <Typography.Text type="secondary">
-                {t('restarts')} / {t('cpu')}
-              </Typography.Text>
-              <DualAxes
-                height={240}
-                data={[chartData, chartData]}
-                xField="at"
-                yField={['restarts', 'cpu']}
-                geometryOptions={[
-                  { geometry: 'column', color: '#F5222D' },
-                  { geometry: 'line', color: '#635BFF', smooth: true },
-                ]}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 14 }}>
+          {[
+            {
+              key: 'cpu',
+              title: `${t('cpu')} (%)`,
+              series: [{ key: 'cpu', label: t('cpu'), color: 'green' as const, kind: 'area' as const, values: chartData.map((point) => point.cpu) }],
+              format: (value: number) => `${axisNumber(value)}%`,
+            },
+            {
+              key: 'restarts',
+              title: t('restarts'),
+              series: [{ key: 'restarts', label: t('restarts'), color: 'amber' as const, kind: 'bars' as const, values: chartData.map((point) => point.restarts) }],
+              format: (value: number) => String(Number(value.toFixed(2))),
+            },
+            {
+              key: 'memory',
+              title: `${t('memory')} (MB)`,
+              series: [{ key: 'memory', label: t('memory'), color: 'green' as const, values: chartData.map((point) => point.memoryMb) }],
+              format: axisNumber,
+            },
+            {
+              key: 'disk',
+              title: `${t('disk')} (MB)`,
+              series: [{ key: 'disk', label: t('disk'), color: 'green' as const, values: chartData.map((point) => point.diskMb) }],
+              format: axisNumber,
+            },
+          ].map((chart) => (
+            <div key={chart.key} className="rt-bezel" style={{ padding: '8px 12px 10px' }}>
+              <RetroLineChart
+                title={chart.title}
+                showLegend={false}
+                labels={chartData.map((point) => point.at)}
+                series={chart.series}
+                format={chart.format}
+                emptyLabel={t('noMetricsYet')}
+                height={130}
+                xTicks={3}
               />
             </div>
-            <div>
-              <Typography.Text type="secondary">{t('memory')} (MB)</Typography.Text>
-              <Line height={200} data={chartData} xField="at" yField="memoryMb" color="#09825D" smooth />
-            </div>
-            <div>
-              <Typography.Text type="secondary">{t('disk')} (MB)</Typography.Text>
-              <Column height={200} data={chartData} xField="at" yField="diskMb" color="#0A2540" />
-            </div>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
@@ -2366,18 +2385,9 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
 
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: 16,
-          marginBottom: 16,
-          flexWrap: 'wrap',
-        }}
-      >
+      <div className="hc-head-panel" style={{ ...cardStyle, marginBottom: 14 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <Tooltip title={t('iconEditTitle')}>
               <button
                 type="button"
@@ -2404,7 +2414,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               </Space.Compact>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Typography.Title level={3} style={{ color: '#0A2540', margin: 0 }}>
+                <Typography.Title level={3} style={{ color: 'var(--rt-ink)', margin: 0 }}>
                   {app.name}
                 </Typography.Title>
                 <Tooltip title={t('editName')}>
@@ -2490,7 +2500,7 @@ export default function ApplicationDetailPage({ id: propId }: { id?: number } = 
               <HostnamePills hostnames={app.hostnames} />
             </div>
           ) : null}
-          <div style={{ marginTop: 8, color: '#425466' }}>
+          <div style={{ marginTop: 8, color: 'var(--rt-ink-soft)' }}>
             <div>
               <Typography.Text type="secondary">{t('repository')}: </Typography.Text>
               {repoHref(app) ? (

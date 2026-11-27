@@ -98,8 +98,8 @@ function Section({
               onClick={() => onSelect(entry)}
               style={{
                 textAlign: 'left',
-                border: selected ? '1px solid #635bff' : '1px solid #E3E8EE',
-                background: selected ? '#f6f5ff' : '#fff',
+                border: selected ? '1px solid #E2621F' : '1px solid #C9AC88',
+                background: selected ? '#FCE3CF' : 'var(--rt-plate)',
                 borderRadius: 8,
                 padding: 10,
                 cursor: 'pointer',
@@ -120,7 +120,7 @@ function Section({
                       width: 28,
                       height: 28,
                       borderRadius: 6,
-                      background: '#E3E8EE',
+                      background: '#C9AC88',
                       display: 'inline-flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -131,9 +131,9 @@ function Section({
                     {entry.name.slice(0, 1)}
                   </span>
                 )}
-                <span style={{ fontWeight: 600, color: '#0A2540', lineHeight: 1.2 }}>{entry.name}</span>
+                <span style={{ fontWeight: 600, color: 'var(--rt-ink)', lineHeight: 1.2 }}>{entry.name}</span>
               </div>
-              <div style={{ marginTop: 6, color: '#425466', fontSize: 12, wordBreak: 'break-all' }}>
+              <div style={{ marginTop: 6, color: 'var(--rt-ink-soft)', fontSize: 12, wordBreak: 'break-all' }}>
                 {entry.image}
               </div>
             </button>

@@ -505,7 +505,7 @@ export function DatabaseManagementTab({
   );
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E3E8EE', borderRadius: 8, padding: 24 }}>
+    <div style={{ background: 'var(--rt-plate)', border: '1px solid #C9AC88', borderRadius: 8, padding: 24 }}>
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
         {t('dbManagementHint')}
       </Typography.Paragraph>

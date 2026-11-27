@@ -220,12 +220,12 @@ export function DataTable<T extends object>({
           style={{
             marginBottom: 12,
             padding: '8px 12px',
-            background: '#F6F9FC',
-            border: '1px solid #E3E8EE',
+            background: '#F3E3CC',
+            border: '1px solid #C9AC88',
             borderRadius: 6,
           }}
         >
-          <span style={{ color: '#425466' }}>{t('selectedCount', { count: selectedKeys.length })}</span>
+          <span style={{ color: 'var(--rt-ink-soft)' }}>{t('selectedCount', { count: selectedKeys.length })}</span>
           {bulkActions.map((action) => (
             <Button
               key={action.key}

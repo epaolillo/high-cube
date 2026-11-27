@@ -231,9 +231,9 @@ export function QuickCommandsPanel({ serverId, request }: { serverId: string; re
           style={{
             marginTop: 16,
             padding: '12px 16px',
-            border: '1px solid #E3E8EE',
+            border: '1px solid #C9AC88',
             borderRadius: 8,
-            background: '#F6F9FC',
+            background: '#F3E3CC',
           }}
         >
           <Space align="center">

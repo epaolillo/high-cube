@@ -9,8 +9,8 @@ export async function confirmRedeploy(t: TFunction): Promise<boolean> {
     showCancelButton: true,
     confirmButtonText: t('redeploy'),
     cancelButtonText: t('redeployAfterSaveLater'),
-    confirmButtonColor: '#635BFF',
-    cancelButtonColor: '#8898AA',
+    confirmButtonColor: '#E2621F',
+    cancelButtonColor: '#A08A70',
     focusCancel: true,
   });
   return result.isConfirmed;

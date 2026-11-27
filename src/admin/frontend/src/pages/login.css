@@ -1,0 +1,123 @@
+/* Login console: a single screwed panel on the dark metal desk. */
+
+.hc-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 16px;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(255, 210, 150, 0.08), transparent 60%),
+    url(/retro/textures/tex-metal.png) repeat,
+    #2b2621;
+  color: var(--rt-ink);
+  font-family: var(--rt-font);
+}
+
+.hc-login__panel {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 430px;
+  padding: 22px 26px 16px;
+}
+.hc-login__band {
+  position: absolute;
+  top: -6px;
+  right: -20px;
+  width: 210px;
+  height: 42px;
+  background: url(/retro/decor/stripes-band.png) left top / auto 100% no-repeat;
+  pointer-events: none;
+}
+
+.hc-login__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 16px;
+  line-height: 1;
+}
+.hc-login__monitor {
+  height: 64px;
+  filter: drop-shadow(0 3px 3px rgba(40, 20, 6, 0.45));
+}
+.hc-login__wordmark {
+  color: var(--rt-ink);
+  font-size: 36px;
+  font-weight: 900;
+  font-style: italic;
+  font-stretch: 92%;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.hc-login__brand small {
+  display: block;
+  margin-top: 5px;
+  padding-left: 22px;
+  color: var(--rt-orange);
+  font-size: 14px;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.hc-login__screen {
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  font-family: var(--rt-font-lcd);
+  text-shadow: 0 0 6px rgba(143, 245, 90, 0.5);
+}
+.hc-login__prompt {
+  font-size: 26px;
+  line-height: 1.1;
+}
+.hc-login__cursor {
+  animation: rt-blink 1s steps(1) infinite;
+}
+.hc-login__hint {
+  color: #8fc86a;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.hc-login .hc-login__submit {
+  height: 40px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hc-login__foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+.hc-login__vent {
+  flex: 1;
+  height: 26px;
+  border-image: url(/retro/decor/vent.png) 0 24 fill / 0 12px stretch;
+  border-style: solid;
+  border-width: 0 12px;
+}
+.hc-login__lamps {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px 6px;
+}
+.hc-login__lamps .rt-lamp {
+  width: 20px;
+  height: 20px;
+  background-size: 20px 20px;
+}
+.hc-login__plate {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 900;
+  font-stretch: 85%;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}

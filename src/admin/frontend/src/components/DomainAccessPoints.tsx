@@ -60,9 +60,9 @@ export function DomainAccessPoints({ domains, hostnames, servers, isAdmin, onUpd
               alignItems: 'center',
               flexWrap: 'wrap',
               padding: '8px 12px',
-              border: '1px solid #E3E8EE',
+              border: '1px solid #C9AC88',
               borderRadius: 8,
-              background: '#FAFBFC',
+              background: '#F3E3CC',
             }}
           >
             <Typography.Text style={{ minWidth: 140 }}>{domain.hostname}</Typography.Text>

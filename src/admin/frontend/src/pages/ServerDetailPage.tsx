@@ -18,6 +18,7 @@ import { connectTerminal, type TerminalMode, type TerminalTransport } from '../t
 import { useAuth } from '../auth/AuthContext';
 import { ServerVpnModal } from '../vpn/ServerVpnModal';
 import '@xterm/xterm/css/xterm.css';
+import { RETRO_PALETTE, retroAxisStyle, retroCard, retroChartTheme, retroScreen, retroTerminalTheme } from '../retro/styles';
 
 dayjs.extend(relativeTime);
 
@@ -62,12 +63,7 @@ type Server = {
   lastSeenAt?: string;
 };
 
-const cardStyle = {
-  background: '#fff',
-  border: '1px solid #E3E8EE',
-  borderRadius: 8,
-  padding: 24,
-};
+const cardStyle = retroCard;
 
 function formatBytes(value: number) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -197,7 +193,9 @@ function MetricChart({
         <Typography.Text type="secondary">{t('noMetricsYet')}</Typography.Text>
       ) : (
         // G2 v5 options: scales, axes, slider and tooltip are configured per channel.
+        <div style={{ ...retroScreen, marginTop: 8, padding: '6px 8px' }}>
         <Line
+          theme={retroChartTheme}
           height={240}
           autoFit
           data={data}
@@ -213,11 +211,13 @@ function MetricChart({
           }}
           axis={{
             x: {
+              ...retroAxisStyle,
               tickCount: 6,
               labelAutoHide: true,
               labelFormatter: (value: number) => formatTick(Number(value), range),
             },
             y: {
+              ...retroAxisStyle,
               title: unit || false,
               labelFormatter: (value: number) => formatAxisValue(Number(value), unit),
             },
@@ -226,7 +226,7 @@ function MetricChart({
           {...(onSelectWindow
             ? {
                 interaction: {
-                  brushXHighlight: { series: true, maskFill: '#635BFF', maskFillOpacity: 0.12 },
+                  brushXHighlight: { series: true, maskFill: '#8FF55A', maskFillOpacity: 0.14 },
                 },
                 onReady: (chart: { on: (event: string, handler: (event: unknown) => void) => void }) => {
                   chart.on('brush:end', (event) => {
@@ -250,8 +250,9 @@ function MetricChart({
               }),
             ],
           }}
-          legend={seriesField ? { color: { position: 'top' } } : false}
+          legend={seriesField ? { color: { position: 'top', itemLabelFill: '#a8f57c' } } : false}
         />
+        </div>
       )}
     </div>
   );
@@ -286,12 +287,7 @@ function HostTerminal({
       scrollback: 5000,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
       fontSize: 13,
-      theme: {
-        background: '#0A2540',
-        foreground: '#E6EDF5',
-        cursor: '#635BFF',
-        selectionBackground: 'rgba(99, 91, 255, 0.35)',
-      },
+      theme: retroTerminalTheme,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -513,14 +509,8 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
 
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: 24,
-        }}
-      >
+      <div className="hc-head-panel" style={{ ...cardStyle, marginBottom: 14 }}>
+        <img className="hc-head-panel__art" src="/retro/illustrations/server-desktop.png" alt="" />
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <Tooltip title={t('iconEditTitle')}>
@@ -533,7 +523,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
                 <AppIcon icon={server.icon} name={server.name} size={44} />
               </button>
             </Tooltip>
-            <Typography.Title level={3} style={{ color: '#0A2540', margin: 0 }}>
+            <Typography.Title level={3} style={{ color: 'var(--rt-ink)', margin: 0 }}>
               {server.name}
             </Typography.Title>
             <span
@@ -541,9 +531,10 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
                 display: 'inline-flex',
                 alignItems: 'center',
                 padding: '2px 10px',
-                borderRadius: 999,
-                background: server.status === 'online' ? 'rgba(9, 130, 93, 0.1)' : '#F6F9FC',
-                border: '1px solid #E3E8EE',
+                borderRadius: 6,
+                background: server.status === 'online' ? 'linear-gradient(#E2F7D0, #B4E39A)' : 'linear-gradient(#FBF1E2, #E9D4B6)',
+                border: `1px solid ${server.status === 'online' ? '#5AA23C' : '#B89A76'}`,
+                boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 1px rgba(60, 40, 20, 0.25)',
               }}
             >
               <Badge
@@ -552,7 +543,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
               />
             </span>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, color: '#425466' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, color: 'var(--rt-ink-soft)' }}>
             <div>
               <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
                 {t('ipAddress')}
@@ -617,7 +608,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           data={chartRows('cpu')}
           yField="value"
           range={range}
-          color="#635BFF"
+          color={RETRO_PALETTE[0]}
           unit="%"
           onSelectWindow={server.status === 'online' ? (from, to) => requestAnalysis('cpu', from, to) : undefined}
         />
@@ -632,7 +623,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           data={chartRows('memory')}
           yField="value"
           range={range}
-          color="#09825D"
+          color={RETRO_PALETTE[1]}
           unit="%"
           onSelectWindow={server.status === 'online' ? (from, to) => requestAnalysis('ram', from, to) : undefined}
         />
@@ -641,7 +632,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           data={loadRows}
           yField="value"
           range={range}
-          color={['#635BFF', '#09825D', '#F5A623']}
+          color={[RETRO_PALETTE[0], RETRO_PALETTE[1], RETRO_PALETTE[2]]}
           unit=""
           seriesField="series"
         />
@@ -651,7 +642,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
           data={chartRows('disk')}
           yField="value"
           range={range}
-          color="#0A2540"
+          color={RETRO_PALETTE[3]}
           unit="%"
         />
         {hasGpu && (
@@ -661,7 +652,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             data={chartRows('gpu')}
             yField="value"
             range={range}
-            color="#F5A623"
+            color={RETRO_PALETTE[4]}
             unit="%"
           />
         )}
@@ -676,7 +667,7 @@ export default function ServerDetailPage({ id: propId }: { id?: number } = {}) {
             data={chartRows('gpuMemory')}
             yField="value"
             range={range}
-            color="#D97706"
+            color={RETRO_PALETTE[2]}
             unit="%"
           />
         )}

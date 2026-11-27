@@ -386,7 +386,7 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
               label: t('createTabAppImage'),
               children: (
                 <>
-                  <Typography.Paragraph style={{ color: '#425466' }}>
+                  <Typography.Paragraph style={{ color: 'var(--rt-ink-soft)' }}>
                     {t('appImageHint')}
                   </Typography.Paragraph>
                   <AppImagePicker selectedId={selectedImageId} onSelect={selectImage} />
@@ -405,9 +405,9 @@ export function ApplicationFormModal({ open, isAdmin, onClose, onCreated }: Prop
                     style={{
                       marginBottom: 12,
                       padding: '8px 12px 4px',
-                      border: '1px solid #E3E8EE',
+                      border: '1px solid #C9AC88',
                       borderRadius: 8,
-                      background: '#FAFBFC',
+                      background: '#F3E3CC',
                     }}
                   >
                     <div

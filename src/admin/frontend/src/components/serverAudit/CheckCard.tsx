@@ -19,7 +19,7 @@ import type { AuditCheck, Severity, SuggestedAction } from './types';
 
 export const severityColor: Record<Severity, string> = {
   ok: '#09825D',
-  info: '#635BFF',
+  info: '#E2621F',
   warning: '#D97706',
   critical: '#E5484D',
 };
@@ -38,10 +38,10 @@ export function severityIcon(severity: Severity | undefined): ReactNode {
 }
 
 function statusIcon(check: AuditCheck) {
-  if (check.status === 'pending') return <ClockCircleOutlined style={{ color: '#8898AA' }} />;
-  if (check.status === 'running') return <LoadingOutlined style={{ color: '#635BFF' }} />;
-  if (check.status === 'skipped') return <MinusCircleOutlined style={{ color: '#8898AA' }} />;
-  if (check.status === 'error') return <CloseCircleFilled style={{ color: '#8898AA' }} />;
+  if (check.status === 'pending') return <ClockCircleOutlined style={{ color: 'var(--rt-ink-faint)' }} />;
+  if (check.status === 'running') return <LoadingOutlined style={{ color: '#E2621F' }} />;
+  if (check.status === 'skipped') return <MinusCircleOutlined style={{ color: 'var(--rt-ink-faint)' }} />;
+  if (check.status === 'error') return <CloseCircleFilled style={{ color: 'var(--rt-ink-faint)' }} />;
   return severityIcon(check.severity);
 }
 
@@ -64,9 +64,9 @@ export function ActionButton({
         alignItems: 'center',
         gap: 12,
         padding: '8px 12px',
-        border: '1px solid #E3E8EE',
+        border: '1px solid #C9AC88',
         borderRadius: 6,
-        background: applied ? '#F6F9FC' : '#fff',
+        background: applied ? '#F3E3CC' : 'var(--rt-plate)',
       }}
     >
       <div style={{ minWidth: 0 }}>
@@ -115,18 +115,18 @@ export function CheckCard({
   const findings = check.findings ?? [];
   const actions = check.actions ?? [];
   const accent =
-    check.status === 'done' && check.severity ? severityColor[check.severity] : check.status === 'running' ? '#635BFF' : '#E3E8EE';
+    check.status === 'done' && check.severity ? severityColor[check.severity] : check.status === 'running' ? '#E2621F' : '#C9AC88';
 
   return (
     <div
       style={{
-        border: '1px solid #E3E8EE',
+        border: '1px solid #C9AC88',
         borderLeft: `3px solid ${accent}`,
         borderRadius: 8,
         padding: '12px 16px',
         minWidth: 0,
         maxWidth: '100%',
-        background: check.status === 'pending' ? '#FAFBFC' : '#fff',
+        background: check.status === 'pending' ? '#F3E3CC' : 'var(--rt-plate)',
         opacity: check.status === 'pending' ? 0.7 : 1,
       }}
     >
@@ -167,7 +167,7 @@ export function CheckCard({
         <Typography.Paragraph style={{ margin: '10px 0 0 26px' }}>{messageText(t, check.conclusion)}</Typography.Paragraph>
       )}
       {finished && findings.length > 0 && (
-        <ul style={{ margin: '4px 0 0 26px', paddingInlineStart: 18, color: '#425466' }}>
+        <ul style={{ margin: '4px 0 0 26px', paddingInlineStart: 18, color: 'var(--rt-ink-soft)' }}>
           {findings.map((finding, i) => (
             <li key={`${finding.code}-${i}`}>{messageText(t, finding)}</li>
           ))}

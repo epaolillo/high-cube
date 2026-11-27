@@ -20,6 +20,7 @@
   --rt-lcd-dim: #4f8a35;
   --rt-font: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
   --rt-font-lcd: 'VT323', 'Share Tech Mono', ui-monospace, monospace;
+  --rt-font-mono: 'Space Mono', 'Courier New', ui-monospace, monospace;
 }
 
 /* Load every alternate state up front so the first hover or press never flickers. */
@@ -34,6 +35,7 @@ html::after {
     url(/retro/buttons/btn-dark-hover.png) url(/retro/buttons/btn-dark-active.png)
     url(/retro/buttons/btn-bezel-hover.png) url(/retro/buttons/btn-bezel-active.png)
     url(/retro/buttons/btn-terminal-hover.png) url(/retro/buttons/btn-terminal-active.png)
+    url(/retro/buttons/btn-danger-hover.png) url(/retro/buttons/btn-danger-active.png)
     url(/retro/controls/checkbox-checked.png) url(/retro/controls/toggle-checked.png);
 }
 
@@ -137,6 +139,13 @@ html::after {
   color: var(--rt-lcd-text);
   text-shadow: 0 0 4px rgba(143, 245, 90, 0.55);
 }
+.rt-btn--danger {
+  --rt-btn-normal: url(/retro/buttons/btn-danger-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-danger-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-danger-active.png);
+  color: #ffe2b8;
+  text-shadow: 0 0 6px rgba(255, 196, 120, 0.8);
+}
 .rt-btn--icon {
   width: 26px;
   min-width: 26px;
@@ -187,6 +196,43 @@ html::after {
   border-image: url(/retro/frames/frame-inset.png) 16 / 8px stretch;
   border-radius: 5px;
   background: url(/retro/textures/tex-grain.png) repeat, var(--rt-well);
+}
+
+/* Small screen set in a screwed metal bezel. Tint the glass with --rt-screen. */
+.rt-bezel {
+  --rt-screen: var(--rt-lcd-bg);
+  border: 8px solid transparent;
+  border-image: url(/retro/frames/frame-screen-bezel.png) 32 / 16px stretch;
+  border-radius: 8px;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.07), transparent 70%),
+    var(--rt-screen);
+  background-clip: padding-box;
+  color: var(--rt-lcd-text);
+}
+
+/* Curved CRT tube in a monitor housing, with a phosphor grid. */
+.rt-crt {
+  position: relative;
+  border: 18px solid transparent;
+  border-image: url(/retro/frames/frame-crt.png) 92 / 46px stretch;
+  border-radius: 12px;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    url(/retro/textures/grid-phosphor.png) repeat center / 64px 64px,
+    radial-gradient(ellipse at 50% 45%, #1d2c16 0%, #0e160a 75%, #070b05 100%);
+  background-clip: padding-box;
+  color: var(--rt-lcd-text);
+}
+/* Glass glare above the content. */
+.rt-crt::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 26px;
+  background: radial-gradient(ellipse 70% 40% at 30% 8%, rgba(255, 255, 255, 0.07), transparent 70%);
+  content: '';
+  pointer-events: none;
 }
 
 /* Phosphor screen behind dark glass. */
@@ -250,27 +296,8 @@ html::after {
 
 /* -------------------------------------------------------------- controls */
 
-.rt-check {
-  appearance: none;
-  -webkit-appearance: none;
-  flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  background: url(/retro/controls/checkbox.png) center / 18px 18px no-repeat;
-  cursor: pointer;
-}
-.rt-check:checked {
-  background-image: url(/retro/controls/checkbox-checked.png);
-}
-.rt-check:hover:not(:disabled) {
-  filter: brightness(1.05);
-}
-.rt-check:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
+/* Every checkbox in the system is the same orange toggle key. */
+.rt-check,
 .rt-toggle {
   appearance: none;
   -webkit-appearance: none;
@@ -281,14 +308,18 @@ html::after {
   background: url(/retro/controls/toggle.png) center / 22px 22px no-repeat;
   cursor: pointer;
 }
-.rt-toggle:checked {
+:is(.rt-check, .rt-toggle):checked {
   background-image: url(/retro/controls/toggle-checked.png);
 }
-.rt-toggle:hover {
+:is(.rt-check, .rt-toggle):hover:not(:disabled) {
   filter: brightness(1.06);
 }
-.rt-toggle:active {
+:is(.rt-check, .rt-toggle):active:not(:disabled) {
   transform: translateY(1px);
+}
+:is(.rt-check, .rt-toggle):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Round LED. The art has room for the glow, so the box is twice the lens. */
@@ -334,4 +365,181 @@ html::after {
 .rt-vent {
   display: block;
   background: url(/retro/decor/vent.png) no-repeat center / contain;
+}
+
+/* ------------------------------------------------------------- readouts */
+
+/* RetroStatScreen: caption, then a meter and the value side by side. */
+.rt-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 74px;
+  padding: 6px 14px;
+  font-family: var(--rt-font-lcd);
+  text-shadow: 0 0 6px rgba(143, 245, 90, 0.5);
+}
+.rt-stat__label {
+  overflow: hidden;
+  font-size: 18px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.rt-stat__row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.rt-stat[data-widget='end'] .rt-stat__row {
+  flex-direction: row-reverse;
+}
+.rt-stat__value {
+  overflow: hidden;
+  font-size: clamp(26px, 2.6vw, 36px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-signal {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 2px;
+  height: 22px;
+}
+.rt-signal i {
+  width: 5px;
+  background: rgba(143, 245, 90, 0.14);
+}
+.rt-signal i[data-on='true'] {
+  background: var(--rt-lcd-text);
+  box-shadow: 0 0 4px rgba(143, 245, 90, 0.7);
+}
+
+/* RetroLineChart: phosphor plot, meant for an .rt-bezel or .rt-crt screen. */
+.rt-chart {
+  --rt-chart-green: #8ff55a;
+  --rt-chart-amber: #ffb347;
+  --rt-chart-red: #ff5a3a;
+  --rt-chart-dim: #6aa84a;
+  font-family: var(--rt-font-lcd);
+}
+.rt-chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+.rt-chart__title {
+  margin-right: auto;
+  color: var(--rt-chart-green);
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.45);
+}
+.rt-chart__series {
+  --rt-series: var(--rt-chart-green);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rt-series);
+  text-shadow: 0 0 5px color-mix(in srgb, var(--rt-series) 45%, transparent);
+}
+.rt-chart__series i {
+  width: 18px;
+  height: 3px;
+  background: currentColor;
+  box-shadow: 0 0 5px currentColor;
+}
+.rt-chart__series b {
+  font-weight: 400;
+  opacity: 0.8;
+}
+.rt-chart [data-color='amber'] {
+  --rt-series: var(--rt-chart-amber);
+}
+.rt-chart [data-color='red'] {
+  --rt-series: var(--rt-chart-red);
+}
+.rt-chart__body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.rt-chart__y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 44px;
+  margin: -8px 0;
+  padding-right: 8px;
+  color: var(--rt-chart-dim);
+  font-size: 15px;
+  text-align: right;
+  white-space: nowrap;
+}
+.rt-chart__plot {
+  min-width: 0;
+  border-bottom: 1px solid rgba(143, 245, 90, 0.45);
+  border-left: 1px solid rgba(143, 245, 90, 0.45);
+}
+.rt-chart__plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.rt-chart__grid {
+  stroke: rgba(143, 245, 90, 0.16);
+  stroke-dasharray: 4 6;
+  vector-effect: non-scaling-stroke;
+}
+.rt-chart__line {
+  --rt-series: var(--rt-chart-green);
+  fill: none;
+  stroke: var(--rt-series);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 3px var(--rt-series));
+}
+.rt-chart__area {
+  --rt-series: var(--rt-chart-green);
+  fill: color-mix(in srgb, var(--rt-series) 16%, transparent);
+}
+.rt-chart__bars {
+  --rt-series: var(--rt-chart-green);
+  fill: var(--rt-series);
+  filter: drop-shadow(0 0 3px var(--rt-series));
+}
+.rt-chart__x {
+  display: flex;
+  grid-column: 2;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 4px;
+  color: var(--rt-chart-dim);
+  font-size: 15px;
+  white-space: nowrap;
+}
+.rt-chart__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rt-chart-dim);
+  font-size: 20px;
+}
+.rt-chart__empty::after {
+  content: '_';
+  animation: rt-blink 1s steps(1) infinite;
+}
+@keyframes rt-blink {
+  50% {
+    opacity: 0;
+  }
 }

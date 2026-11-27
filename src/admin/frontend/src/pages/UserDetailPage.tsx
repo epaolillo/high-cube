@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/client';
-import { ActivityTimeline, type ActivityBucket } from '../components/ActivityTimeline';
+import { ACTIVITY_COLORS, ActivityTimeline, type ActivityBucket } from '../components/ActivityTimeline';
+import { retroCard } from '../retro/styles';
 
 dayjs.extend(relativeTime);
 
@@ -35,12 +36,7 @@ type ActivityRow = {
   createdAt: string;
 };
 
-const cardStyle: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #E3E8EE',
-  borderRadius: 8,
-  padding: 24,
-};
+const cardStyle = retroCard;
 
 function statusColor(status: number) {
   if (status >= 500) return 'error';
@@ -123,7 +119,7 @@ function AuditTrail({ userId }: { userId: string }) {
                 width: 10,
                 height: 10,
                 borderRadius: 2,
-                background: '#635bff',
+                background: ACTIVITY_COLORS.actions,
                 marginRight: 6,
               }}
             />
@@ -136,7 +132,7 @@ function AuditTrail({ userId }: { userId: string }) {
                 width: 10,
                 height: 10,
                 borderRadius: 2,
-                background: '#09825d',
+                background: ACTIVITY_COLORS.active,
                 marginRight: 6,
               }}
             />
@@ -149,7 +145,7 @@ function AuditTrail({ userId }: { userId: string }) {
                 width: 10,
                 height: 10,
                 borderRadius: 2,
-                background: '#e5484d',
+                background: ACTIVITY_COLORS.inactive,
                 marginRight: 6,
               }}
             />
@@ -295,15 +291,7 @@ export default function UserDetailPage({
   if (!user) return null;
 
   const settingsTab = (
-    <div
-      style={{
-        background: '#fff',
-        border: '1px solid #E3E8EE',
-        borderRadius: 8,
-        padding: 24,
-        maxWidth: 560,
-      }}
-    >
+    <div style={{ ...retroCard, maxWidth: 560 }}>
       <Form
         form={form}
         layout="vertical"
@@ -383,12 +371,17 @@ export default function UserDetailPage({
 
   return (
     <div>
-      <Typography.Title level={3} style={{ color: '#0A2540', marginBottom: 8 }}>
-        {user.name || user.email}
-      </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-        {user.email}
-      </Typography.Paragraph>
+      <div className="hc-head-panel" style={{ ...retroCard, marginBottom: 14 }}>
+        <img className="hc-head-panel__art" src="/retro/illustrations/retro-computer.png" alt="" />
+        <div>
+          <Typography.Title level={3} style={{ color: 'var(--rt-ink)', margin: 0 }}>
+            {user.name || user.email}
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0' }}>
+            {user.email}
+          </Typography.Paragraph>
+        </div>
+      </div>
       <Tabs
         items={[
           { key: 'settings', label: t('general'), children: settingsTab },

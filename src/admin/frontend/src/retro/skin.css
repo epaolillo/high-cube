@@ -1,0 +1,736 @@
+/*
+ * Cassette-futurism skin for antd components. Applies inside `.hc-skin` (drawers,
+ * login) and every modal. antd styles hover/active states with long selectors, so
+ * a few paint properties need !important to win over them.
+ */
+
+/* ----------------------------------------------------------------- buttons */
+
+:is(.hc-skin, .ant-modal-root) .ant-btn:is(.ant-btn-default, .ant-btn-primary, .ant-btn-dashed):not(.ant-btn-background-ghost) {
+  --rt-btn-normal: url(/retro/buttons/btn-cream-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-cream-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-cream-active.png);
+  border-color: transparent !important;
+  border-image: var(--rt-btn-normal) 24 fill / 12px / 5px stretch;
+  background: none !important;
+  box-shadow: none !important;
+  color: var(--rt-ink) !important;
+  font-weight: 700;
+  font-stretch: 90%;
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn:is(.ant-btn-default, .ant-btn-primary, .ant-btn-dashed):not(:disabled):hover {
+  border-image-source: var(--rt-btn-hover);
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn:is(.ant-btn-default, .ant-btn-primary, .ant-btn-dashed):not(:disabled):active {
+  border-image-source: var(--rt-btn-active);
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn:is(.ant-btn-default, .ant-btn-primary, .ant-btn-dashed):not(:disabled):active > * {
+  transform: translateY(1px);
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-primary:not(.ant-btn-background-ghost),
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-default[aria-pressed='true'] {
+  --rt-btn-normal: url(/retro/buttons/btn-orange-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-orange-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-orange-active.png);
+  color: #fff6ea !important;
+  text-shadow: 0 1px 0 rgba(90, 30, 0, 0.5);
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-dangerous.ant-btn-default {
+  color: #b8321a !important;
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-dangerous.ant-btn-primary {
+  --rt-btn-normal: url(/retro/buttons/btn-danger-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-danger-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-danger-active.png);
+  color: #ffe2b8 !important;
+  text-shadow: 0 0 6px rgba(255, 196, 120, 0.7);
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn:is(.ant-btn-default, .ant-btn-primary, .ant-btn-dashed):disabled {
+  border-image-source: var(--rt-btn-normal);
+  color: var(--rt-ink-faint) !important;
+  filter: saturate(0.4);
+  opacity: 0.6;
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-link:not(.ant-btn-dangerous) {
+  color: var(--rt-orange);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn.ant-btn-link.ant-btn-dangerous {
+  color: #b8321a;
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-btn-group,
+:is(.hc-skin, .ant-modal-root) .ant-space-compact {
+  gap: 4px;
+}
+
+/* ---------------------------------------------------------- inputs & selects */
+
+/* Fields are small phosphor screens set into the panel, like the VPN console. */
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-picker-outlined),
+:is(.hc-skin, .ant-modal-root) .ant-select-outlined:not(.ant-select-customize-input) .ant-select-selector {
+  border-color: #2b2118 !important;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    radial-gradient(ellipse at 50% 0%, rgba(143, 245, 90, 0.08), transparent 70%),
+    var(--rt-lcd-bg) !important;
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.6);
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input, .ant-input-number-input, .ant-picker-input > input),
+:is(.hc-skin, .ant-modal-root) .ant-select-selector :is(.ant-select-selection-item, .ant-select-selection-search-input) {
+  color: var(--rt-lcd-text) !important;
+  caret-color: var(--rt-lcd-text);
+  font-family: var(--rt-font-lcd);
+  font-size: 18px;
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.45);
+}
+:is(.hc-skin, .ant-modal-root) textarea.ant-input {
+  line-height: 1.2;
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input, .ant-input-number-input, .ant-picker-input > input)::placeholder,
+:is(.hc-skin, .ant-modal-root) .ant-select-selection-placeholder {
+  color: var(--rt-lcd-dim) !important;
+  font-family: var(--rt-font-lcd);
+  font-size: 18px;
+  text-shadow: none;
+}
+:is(.hc-skin, .ant-modal-root) .ant-input-affix-wrapper > input.ant-input,
+:is(.hc-skin, .ant-modal-root) .ant-input-number .ant-input-number-input {
+  background: transparent !important;
+  box-shadow: none;
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-prefix, .ant-input-suffix, .ant-input-password-icon, .ant-select-arrow, .ant-select-clear, .ant-picker-suffix, .ant-input-clear-icon) {
+  color: var(--rt-lcd-dim) !important;
+  background: transparent;
+}
+:is(.hc-skin, .ant-modal-root) .ant-input-number-handler-wrap {
+  background: #1c2716;
+}
+:is(.hc-skin, .ant-modal-root) .ant-input-number-handler {
+  border-color: #2f4224 !important;
+  color: var(--rt-lcd-dim);
+}
+:is(.hc-skin, .ant-modal-root) .ant-select-multiple .ant-select-selection-item {
+  border: 1px solid var(--rt-lcd-dim);
+  background: rgba(143, 245, 90, 0.1);
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-picker-outlined):is(:focus, :focus-within),
+:is(.hc-skin, .ant-modal-root) .ant-select-focused .ant-select-selector {
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 0 0 2px rgba(143, 245, 90, 0.35),
+    0 0 8px rgba(143, 245, 90, 0.25) !important;
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-outlined, .ant-input-number-outlined, .ant-picker-outlined).ant-input-status-error,
+:is(.hc-skin, .ant-modal-root) .ant-select-status-error .ant-select-selector {
+  border-color: #c2391a !important;
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-disabled, .ant-input-number-disabled, .ant-picker-disabled),
+:is(.hc-skin, .ant-modal-root) .ant-select-disabled .ant-select-selector {
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    #0b0f08 !important;
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-disabled, .ant-input-number-disabled, .ant-picker-disabled) :is(input, textarea),
+:is(.hc-skin, .ant-modal-root) input.ant-input-disabled,
+:is(.hc-skin, .ant-modal-root) .ant-select-disabled .ant-select-selection-item {
+  color: var(--rt-lcd-dim) !important;
+}
+/* Browser autofill would paint the field yellow. */
+:is(.hc-skin, .ant-modal-root) input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--rt-lcd-bg) inset;
+  -webkit-text-fill-color: var(--rt-lcd-text);
+  caret-color: var(--rt-lcd-text);
+}
+:is(.hc-skin, .ant-modal-root) :is(.ant-input-group-addon, .ant-input-number-group-addon) {
+  background: linear-gradient(#efdcc0, #dcc19c);
+  color: var(--rt-ink);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-form-item-label > label {
+  color: var(--rt-ink);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-form-item-extra {
+  color: var(--rt-ink-soft);
+}
+
+/* --------------------------------------------------------------- dropdowns */
+
+/* Fields sit in a thin metal bezel. */
+:is(.hc-skin, .ant-modal-root) .ant-select-outlined:not(.ant-select-customize-input) .ant-select-selector {
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 0 0 2px #ead8bd,
+    0 0 0 3px #9c7f60 !important;
+}
+:is(.hc-skin, .ant-modal-root) .ant-select-focused.ant-select-outlined .ant-select-selector {
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    0 0 0 2px #ead8bd,
+    0 0 0 3px #9c7f60,
+    0 0 10px rgba(143, 245, 90, 0.35) !important;
+}
+
+/* The arrow is a small cream key with a printed triangle, on every select. */
+.ant-select .ant-select-arrow {
+  top: 50%;
+  inset-inline-end: 4px;
+  justify-content: center;
+  width: 26px;
+  height: min(26px, calc(100% - 8px));
+  margin-top: 0;
+  border: 1px solid transparent;
+  border-image: url(/retro/buttons/btn-cream-normal.png) 24 fill / 8px / 2px stretch;
+  transform: translateY(-50%);
+}
+.ant-select .ant-select-arrow > * {
+  display: none;
+}
+.ant-select .ant-select-arrow::after {
+  content: '';
+  width: 10px;
+  height: 7px;
+  margin-top: 1px;
+  background: #2a1e14;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.ant-select:not(.ant-select-disabled):hover .ant-select-arrow {
+  border-image-source: url(/retro/buttons/btn-cream-hover.png);
+}
+.ant-select-open .ant-select-arrow {
+  border-image-source: url(/retro/buttons/btn-cream-active.png) !important;
+}
+.ant-select-open .ant-select-arrow::after {
+  margin-top: 3px;
+}
+.ant-select-disabled .ant-select-arrow {
+  opacity: 0.5;
+}
+.ant-select-show-arrow :is(.ant-select-selection-item, .ant-select-selection-placeholder),
+.ant-select-show-arrow.ant-select-multiple .ant-select-selector {
+  padding-inline-end: 34px !important;
+}
+.ant-select .ant-select-clear {
+  inset-inline-end: 38px;
+  background: transparent;
+}
+
+/* The open list is a screwed cream panel holding a recessed tray of option keys. */
+:is(.ant-select-dropdown, .ant-dropdown .ant-dropdown-menu) {
+  padding: 9px !important;
+  border: 1px solid #6e5640;
+  border-radius: 8px !important;
+  background:
+    radial-gradient(circle at 6px 6px, #6b5541 0 1.6px, #d8c3a3 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 6px) 6px, #6b5541 0 1.6px, #d8c3a3 2.2px, transparent 2.8px),
+    radial-gradient(circle at 6px calc(100% - 6px), #6b5541 0 1.6px, #d8c3a3 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 6px) calc(100% - 6px), #6b5541 0 1.6px, #d8c3a3 2.2px, transparent 2.8px),
+    url(/retro/textures/tex-grain.png) repeat,
+    linear-gradient(#f5e7d0, #e3cdac) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -2px 0 rgba(90, 60, 30, 0.25),
+    0 12px 28px rgba(20, 12, 5, 0.5),
+    0 2px 4px rgba(20, 12, 5, 0.35) !important;
+}
+.ant-select-dropdown .rc-virtual-list,
+.ant-select-dropdown .ant-select-item-empty {
+  padding: 4px;
+  border: 1px solid #3b2d20;
+  border-radius: 5px;
+  background: linear-gradient(#e2cdae, #ecdcc2);
+  box-shadow:
+    inset 0 2px 4px rgba(60, 38, 18, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.ant-dropdown .ant-dropdown-menu {
+  min-width: 160px;
+}
+
+:is(.ant-select-dropdown .ant-select-item-option, .ant-dropdown .ant-dropdown-menu-item) {
+  align-items: center;
+  min-height: 34px;
+  margin-bottom: 4px;
+  padding: 6px 12px !important;
+  border: 1px solid #b89a76;
+  border-radius: 4px !important;
+  background: linear-gradient(#fdf6ea, #efe0c8) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 1px rgba(70, 45, 20, 0.25);
+  color: #2a1e14 !important;
+  font-family: var(--rt-font-mono) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+:is(.ant-select-dropdown .ant-select-item-option, .ant-dropdown .ant-dropdown-menu-item):last-child {
+  margin-bottom: 0;
+}
+:is(.ant-select-dropdown .ant-select-item-option-active, .ant-dropdown .ant-dropdown-menu-item-active):not(.ant-select-item-option-selected) {
+  border-color: #8f714f;
+  background: linear-gradient(#fffaf1, #f5e6cd) !important;
+}
+:is(.ant-select-dropdown .ant-select-item-option-disabled, .ant-dropdown .ant-dropdown-menu-item-disabled) {
+  opacity: 0.5;
+}
+.ant-dropdown .ant-dropdown-menu-item-danger {
+  color: #b5361a !important;
+}
+.ant-dropdown .ant-dropdown-menu-item-divider {
+  margin: 4px 2px !important;
+  background: #b89a76 !important;
+}
+
+/* The chosen option lights up like a phosphor screen. */
+.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  border-color: #8ff55a;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    radial-gradient(ellipse at 50% 50%, #1d2c16, #0b1208) !important;
+  box-shadow:
+    0 0 0 1px rgba(143, 245, 90, 0.35),
+    0 0 10px rgba(143, 245, 90, 0.45),
+    inset 0 0 12px rgba(143, 245, 90, 0.18);
+  color: #b8ff8a !important;
+  text-shadow: 0 0 6px rgba(143, 245, 90, 0.6);
+}
+.ant-select-dropdown .ant-select-item-option-state {
+  color: #8ff55a !important;
+}
+.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) .ant-select-item-option-state:empty::after {
+  content: '\2713';
+  margin-inline-start: 10px;
+  font-size: 16px;
+}
+.ant-dropdown .ant-dropdown-menu-title-content {
+  font-weight: inherit;
+}
+.ant-select-dropdown .ant-select-item-group {
+  padding: 6px 6px 4px !important;
+  color: var(--rt-ink-soft);
+  font-family: var(--rt-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ant-select-dropdown .ant-select-item-empty {
+  color: var(--rt-ink-soft);
+  font-family: var(--rt-font-mono);
+}
+
+/* -------------------------------------------------------- checks & switches */
+
+/* antd checkboxes everywhere (tables, popovers, drawers) use the dashboard toggle key. */
+.ant-checkbox .ant-checkbox-inner {
+  width: 22px;
+  height: 22px;
+  border: 0 !important;
+  border-radius: 0;
+  background: url(/retro/controls/toggle.png) center / 22px 22px no-repeat !important;
+}
+.ant-checkbox-checked .ant-checkbox-inner {
+  background-image: url(/retro/controls/toggle-checked.png) !important;
+}
+.ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled):hover .ant-checkbox-inner {
+  filter: brightness(1.06);
+}
+.ant-checkbox-wrapper:not(.ant-checkbox-wrapper-disabled):active .ant-checkbox-inner {
+  transform: translateY(1px);
+}
+.ant-checkbox-disabled .ant-checkbox-inner {
+  opacity: 0.45;
+}
+.ant-checkbox:not(.ant-checkbox-indeterminate) .ant-checkbox-inner::after,
+.ant-checkbox-checked::after {
+  display: none;
+}
+.ant-checkbox-indeterminate .ant-checkbox-inner::after {
+  width: 10px;
+  height: 3px;
+  background: var(--rt-orange);
+}
+
+:is(.hc-skin, .ant-modal-root) .ant-switch {
+  background: linear-gradient(#5b4733, #3a2c1f) !important;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.6);
+}
+:is(.hc-skin, .ant-modal-root) .ant-switch.ant-switch-checked {
+  background: linear-gradient(#f2823e, #c9531b) !important;
+}
+:is(.hc-skin, .ant-modal-root) .ant-switch .ant-switch-handle::before {
+  background: linear-gradient(#fffaf0, #d8c2a2);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+:is(.hc-skin, .ant-modal-root) .ant-radio-button-wrapper {
+  background: linear-gradient(#fbf1e2, #e6cfaf);
+  color: var(--rt-ink);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-radio-button-wrapper-checked:not(.ant-radio-button-wrapper-disabled) {
+  background: linear-gradient(#f2823e, #c9531b);
+  color: #fff6ea;
+}
+
+/* -------------------------------------------------------------------- tabs */
+
+/* Each tab is a physical key; the selected one lights orange. */
+:is(.hc-skin, .ant-modal-root) .ant-tabs-top > .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs-top > .ant-tabs-nav::before {
+  border-bottom: 2px solid #b89a76;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs-nav-list {
+  gap: 8px;
+  padding: 6px 6px 8px;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs-ink-bar {
+  display: none;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs .ant-tabs-tab {
+  margin: 0 !important;
+  padding: 0 16px 2px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-image: url(/retro/buttons/btn-cream-normal.png) 24 fill / 12px / 5px stretch;
+  color: var(--rt-ink);
+  font-weight: 700;
+  font-stretch: 90%;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs .ant-tabs-tab:hover {
+  border-image-source: url(/retro/buttons/btn-cream-hover.png);
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs .ant-tabs-tab .ant-tabs-tab-btn {
+  color: var(--rt-ink);
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs .ant-tabs-tab.ant-tabs-tab-active {
+  padding-top: 1px;
+  padding-bottom: 1px;
+  border-image-source: url(/retro/buttons/btn-orange-active.png);
+}
+:is(.hc-skin, .ant-modal-root) .ant-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #fff6ea;
+  text-shadow: 0 1px 0 rgba(90, 30, 0, 0.5);
+}
+
+/* ------------------------------------------------------------------ tables */
+
+/* Tables render on a phosphor screen in a screwed bezel, like the VPN members list. */
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table {
+  background: transparent;
+  color: var(--rt-lcd-text);
+  font-family: var(--rt-font-lcd);
+  font-size: 18px;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-container {
+  overflow: hidden;
+  border: 8px solid transparent;
+  border-image: url(/retro/frames/frame-screen-bezel.png) 32 / 16px stretch;
+  border-radius: 8px;
+  background:
+    url(/retro/textures/scanlines.png) repeat 0 0 / 2px 2px,
+    url(/retro/textures/grid-phosphor.png) repeat center / 64px 64px,
+    radial-gradient(ellipse at 50% 40%, #1d2c16 0%, #0e160a 80%, #070b05 100%);
+  background-clip: padding-box;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-thead > tr > th,
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-thead > tr > td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(143, 245, 90, 0.4);
+  background: transparent;
+  color: var(--rt-lcd-dim);
+  font-family: var(--rt-font-lcd);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-thead > tr > th::before {
+  display: none;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody > tr > td {
+  padding: 5px 10px;
+  border-bottom: 1px dashed rgba(143, 245, 90, 0.18);
+  background: transparent;
+  color: var(--rt-lcd-text);
+  text-shadow: 0 0 5px rgba(143, 245, 90, 0.45);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody > tr:last-child > td {
+  border-bottom: 0;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody > tr.ant-table-row:hover > td,
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody > tr.ant-table-row-selected > td {
+  background: rgba(143, 245, 90, 0.07);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper :is(.ant-table-placeholder, .ant-table-placeholder:hover > td) {
+  background: transparent !important;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper :is(.ant-empty-description, .ant-table-placeholder) {
+  color: var(--rt-lcd-dim);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-column-sorter,
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-filter-trigger {
+  color: var(--rt-lcd-dim);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-cell-fix-left,
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-cell-fix-right {
+  background: #0f170b !important;
+}
+
+/* Text inside the screen glows instead of using ink colors. */
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-typography {
+  color: inherit;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-typography-secondary {
+  color: var(--rt-lcd-dim);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody :is(a, a.ant-typography, .ant-typography a) {
+  color: #ffb347;
+  text-shadow: 0 0 5px rgba(255, 170, 60, 0.45);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-typography code {
+  border: 1px solid rgba(143, 245, 90, 0.4);
+  background: rgba(143, 245, 90, 0.08);
+  box-shadow: none;
+  color: inherit;
+  font-family: var(--rt-font-lcd);
+  font-size: 17px;
+}
+
+/* Status chips become outlined phosphor labels. */
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-tag {
+  --rt-chip: var(--rt-lcd-text);
+  border-color: var(--rt-chip);
+  background: color-mix(in srgb, var(--rt-chip) 10%, transparent);
+  box-shadow: none;
+  color: var(--rt-chip);
+  font-family: var(--rt-font-lcd);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 5px color-mix(in srgb, var(--rt-chip) 50%, transparent);
+  text-transform: uppercase;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-tag:is(.ant-tag-error, .ant-tag-red) {
+  --rt-chip: #ff5a3a;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-tag:is(.ant-tag-warning, .ant-tag-gold, .ant-tag-orange, .ant-tag-volcano, .ant-tag-processing, .ant-tag-blue, .ant-tag-geekblue, .ant-tag-cyan, .ant-tag-purple, .ant-tag-magenta) {
+  --rt-chip: #ffb347;
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-tag:not([class*='ant-tag-']) {
+  --rt-chip: var(--rt-lcd-dim);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-badge-status-text {
+  color: inherit;
+}
+
+/* Row actions are terminal keys; destructive ones keep the red key. */
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-btn:is(.ant-btn-default, .ant-btn-link, .ant-btn-dashed, .ant-btn-text):not(.ant-btn-icon-only.ant-btn-text) {
+  --rt-btn-normal: url(/retro/buttons/btn-terminal-normal.png);
+  --rt-btn-hover: url(/retro/buttons/btn-terminal-hover.png);
+  --rt-btn-active: url(/retro/buttons/btn-terminal-active.png);
+  height: 26px;
+  padding: 0 10px 2px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: transparent !important;
+  border-image: var(--rt-btn-normal) 24 fill / 12px / 5px stretch;
+  background: none !important;
+  box-shadow: none !important;
+  color: var(--rt-lcd-text) !important;
+  font-family: var(--rt-font-lcd);
+  font-size: 17px;
+  font-weight: 400;
+  text-shadow: 0 0 4px rgba(143, 245, 90, 0.55);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-btn:is(.ant-btn-default, .ant-btn-link, .ant-btn-dashed, .ant-btn-text).ant-btn-dangerous {
+  color: #ff7a5a !important;
+  text-shadow: 0 0 4px rgba(255, 90, 58, 0.6);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-btn:not(:disabled):hover {
+  border-image-source: var(--rt-btn-hover);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-btn:not(:disabled):active {
+  border-image-source: var(--rt-btn-active);
+}
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-table-tbody .ant-btn.ant-btn-primary {
+  font-family: var(--rt-font-lcd);
+  font-size: 17px;
+  font-weight: 400;
+}
+
+/* Pagination sits on the panel below the screen. */
+:is(.hc-skin, .ant-modal-root) .ant-table-wrapper .ant-pagination .ant-pagination-item-active {
+  border-color: var(--rt-orange);
+}
+
+/* ------------------------------------------------------- alerts & feedback */
+
+:is(.hc-skin, .ant-modal-root) .ant-alert {
+  border: 1px solid #d9a46e;
+  border-radius: 6px;
+  background: linear-gradient(#fdf0e0, #f8e0c4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(60, 40, 20, 0.2);
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert .ant-alert-icon {
+  color: var(--rt-orange);
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert.ant-alert-error {
+  border-color: #d26a4e;
+  background: linear-gradient(#fde8e0, #f8d3c6);
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert.ant-alert-error .ant-alert-icon {
+  color: #c2391a;
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert.ant-alert-success {
+  border-color: #8fbf6a;
+  background: linear-gradient(#eef7e2, #dbeec8);
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert.ant-alert-success .ant-alert-icon {
+  color: #3d9a2c;
+}
+:is(.hc-skin, .ant-modal-root) .ant-alert-message {
+  color: var(--rt-ink);
+  font-weight: 700;
+}
+
+/* Status chips. */
+:is(.hc-skin, .ant-modal-root) .ant-tag {
+  border-color: #b89a76;
+  border-radius: 5px;
+  background: linear-gradient(#fbf1e2, #e9d4b6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 1px rgba(60, 40, 20, 0.25);
+  color: var(--rt-ink);
+  font-weight: 700;
+  font-stretch: 88%;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tag:is(.ant-tag-success, .ant-tag-green) {
+  border-color: #5aa23c;
+  background: linear-gradient(#e2f7d0, #b4e39a);
+  color: #23620f;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tag:is(.ant-tag-error, .ant-tag-red) {
+  border-color: #c2391a;
+  background: linear-gradient(#fde3da, #f4b9a6);
+  color: #8f2410;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tag:is(.ant-tag-processing, .ant-tag-blue, .ant-tag-geekblue, .ant-tag-cyan) {
+  border-color: #6f8fb8;
+  background: linear-gradient(#e7eff9, #c6d7ec);
+  color: #2c4c78;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tag:is(.ant-tag-warning, .ant-tag-gold, .ant-tag-orange, .ant-tag-volcano) {
+  border-color: #d98a12;
+  background: linear-gradient(#feefd2, #f5cf8a);
+  color: #7a4a05;
+}
+:is(.hc-skin, .ant-modal-root) .ant-tag:is(.ant-tag-purple, .ant-tag-magenta) {
+  border-color: #8a5aa8;
+  background: linear-gradient(#f1e6f7, #dcc6ea);
+  color: #4d2a66;
+}
+
+/* -------------------------------------------------------------- typography */
+
+:is(.hc-skin, .ant-modal-root) :is(h4, h5).ant-typography {
+  color: var(--rt-ink);
+  font-weight: 900;
+  font-stretch: 85%;
+  letter-spacing: 0;
+}
+:is(.hc-skin, .ant-modal-root) h5.ant-typography {
+  font-size: 17px;
+}
+:is(.hc-skin, .ant-modal-root) .ant-typography code {
+  padding: 1px 6px;
+  border: 1px solid #b89a76;
+  border-radius: 4px;
+  background: linear-gradient(#fbf1e2, #e9d4b6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  color: var(--rt-ink);
+  font-size: 12.5px;
+}
+:is(.hc-skin, .ant-modal-root) a.ant-typography,
+:is(.hc-skin, .ant-modal-root) .ant-typography a {
+  color: var(--rt-orange);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-divider {
+  border-color: #c9ac88;
+}
+:is(.hc-skin, .ant-modal-root) .ant-empty-description {
+  color: var(--rt-ink-soft);
+}
+
+/* ------------------------------------------------------- panels & surfaces */
+
+:is(.hc-skin, .ant-modal-root) .ant-card {
+  border: 6px solid transparent;
+  border-image: url(/retro/frames/frame-panel.png) 32 / 16px stretch;
+  border-radius: 10px;
+  background: url(/retro/textures/tex-grain.png) repeat, var(--rt-cream);
+  background-clip: padding-box;
+}
+:is(.hc-skin, .ant-modal-root) .ant-collapse {
+  border-color: #b89a76;
+  background: linear-gradient(#efdcc0, #dfc5a2);
+}
+:is(.hc-skin, .ant-modal-root) .ant-collapse .ant-collapse-content {
+  border-color: #b89a76;
+  background: #fbf1e2;
+}
+:is(.hc-skin, .ant-modal-root) .ant-collapse .ant-collapse-header {
+  color: var(--rt-ink);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-list-split .ant-list-item {
+  border-color: #e0c9a9;
+}
+:is(.hc-skin, .ant-modal-root) .ant-descriptions-bordered .ant-descriptions-item-label {
+  background: linear-gradient(#efdcc0, #dfc5a2);
+  font-weight: 700;
+}
+:is(.hc-skin, .ant-modal-root) .ant-segmented {
+  background: #dcc3a5;
+  box-shadow: inset 0 2px 3px rgba(70, 45, 20, 0.25);
+}
+:is(.hc-skin, .ant-modal-root) .ant-segmented .ant-segmented-item-selected {
+  background: linear-gradient(#fff7ea, #e9d4b6);
+  font-weight: 700;
+}
+
+/* Modals become screwed cream panels. */
+.ant-modal-root .ant-modal .ant-modal-content {
+  padding: 18px 22px;
+  border: 6px solid transparent;
+  border-image: url(/retro/frames/frame-panel.png) 32 / 16px stretch;
+  border-radius: 10px;
+  background: url(/retro/textures/tex-grain.png) repeat, var(--rt-cream);
+  background-clip: padding-box;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.35),
+    0 14px 32px rgba(0, 0, 0, 0.5);
+}
+.ant-modal-root .ant-modal .ant-modal-header {
+  background: transparent;
+}
+.ant-modal-root .ant-modal .ant-modal-title {
+  color: var(--rt-ink);
+  font-size: 19px;
+  font-weight: 900;
+  font-stretch: 85%;
+}

@@ -32,8 +32,8 @@ export function AppIcon({
         width: size,
         height: size,
         borderRadius: 6,
-        background: '#E3E8EE',
-        color: '#425466',
+        background: '#C9AC88',
+        color: 'var(--rt-ink-soft)',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -161,7 +161,7 @@ function SquareCropper({ src, onChange }: { src: string; onChange: (dataUrl: str
           width: VIEWPORT,
           height: VIEWPORT,
           borderRadius: 12,
-          border: '1px solid #E3E8EE',
+          border: '1px solid #C9AC88',
           background:
             'repeating-conic-gradient(#f3f4f6 0% 25%, #fff 0% 50%) 50% / 20px 20px',
           cursor: 'move',
@@ -272,7 +272,7 @@ export function IconEditor({
                     showUploadList={false}
                     beforeUpload={beforeUpload}
                   >
-                    <p style={{ fontSize: 32, margin: 0, color: '#635bff' }}>+</p>
+                    <p style={{ fontSize: 32, margin: 0, color: '#E2621F' }}>+</p>
                     <p>{t('iconUploadHint')}</p>
                   </Upload.Dragger>
                 )}

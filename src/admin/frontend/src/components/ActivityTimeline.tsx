@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
+import { retroScreen } from '../retro/styles';
 
 export type ActivityBucket = {
   at: string;
@@ -7,9 +8,10 @@ export type ActivityBucket = {
   active: boolean;
 };
 
-const GREEN = '#09825d';
-const RED = '#e5484d';
-const ACCENT = '#635bff';
+export const ACTIVITY_COLORS = { active: '#8FF55A', inactive: '#FF5A3A', actions: '#FFB347' };
+const GREEN = ACTIVITY_COLORS.active;
+const RED = ACTIVITY_COLORS.inactive;
+const ACCENT = ACTIVITY_COLORS.actions;
 
 // Timeline of the last N hours. Action counts rise as bars from a centered
 // baseline; the baseline itself is green while the user was present (active) and
@@ -41,7 +43,7 @@ export function ActivityTimeline({
   }
 
   return (
-    <div style={{ overflowX: 'auto', width: '100%' }}>
+    <div style={{ ...retroScreen, overflowX: 'auto', width: '100%', padding: '6px 8px' }}>
       <svg
         width={width}
         height={height + 24}
@@ -93,8 +95,9 @@ export function ActivityTimeline({
               x={x}
               y={height + 16}
               textAnchor="middle"
-              fontSize={10}
-              fill="#697386"
+              fontSize={14}
+              fontFamily="VT323, monospace"
+              fill="#7FBF5C"
             >
               {dayjs(bucket.at).locale(i18n.language).format('HH:mm')}
             </text>

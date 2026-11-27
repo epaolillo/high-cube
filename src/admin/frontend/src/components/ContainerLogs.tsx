@@ -1,7 +1,8 @@
 import { CaretRightOutlined, PauseOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
-import { Button, Space, Tag, Tooltip, Typography } from 'antd';
+import { Button, Space, Tag, Tooltip } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { retroScreen } from '../retro/styles';
 import { connectTerminalTarget, type TerminalMode, type TerminalTransport } from '../terminal/transport';
 
 // Output kept for scrolling back; older lines are dropped from the top.
@@ -207,8 +208,7 @@ export function ContainerLogs({
       <div
         style={{
           minHeight: 280,
-          background: '#F6F9FC',
-          color: '#697386',
+          ...retroScreen,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -217,10 +217,12 @@ export function ContainerLogs({
         }}
       >
         <div>
-          <Typography.Title level={5} style={{ color: '#697386', marginTop: 0 }}>
+          <div className="rt-lcd-text" style={{ fontSize: 22 }}>
             {t('logsNoContainer')}
-          </Typography.Title>
-          <Typography.Text type="secondary">{t('logsNoContainerHint')}</Typography.Text>
+          </div>
+          <div className="rt-lcd-text" style={{ fontSize: 17, opacity: 0.7 }}>
+            {t('logsNoContainerHint')}
+          </div>
         </div>
       </div>
     );
@@ -243,7 +245,7 @@ export function ContainerLogs({
           justifyContent: 'space-between',
           gap: 12,
           padding: '8px 16px',
-          borderBottom: '1px solid #E3E8EE',
+          borderBottom: '1px solid #B89A76',
           flexWrap: 'wrap',
         }}
       >
@@ -292,10 +294,10 @@ export function ContainerLogs({
       <div
         ref={viewportRef}
         onScroll={onScroll}
-        style={{ minHeight: 280, overflow: 'auto', background: '#0A2540', position: 'relative' }}
+        style={{ ...retroScreen, minHeight: 280, overflow: 'auto', position: 'relative' }}
       >
         {!hasOutput && (
-          <div style={{ position: 'absolute', padding: '12px 16px', color: '#8792A2', fontSize: 13 }}>
+          <div className="rt-lcd-text" style={{ position: 'absolute', padding: '8px 12px', fontSize: 17, opacity: 0.7 }}>
             {t('logsWaiting')}
           </div>
         )}
@@ -304,11 +306,12 @@ export function ContainerLogs({
           ref={outputRef}
           style={{
             margin: 0,
-            padding: '12px 16px',
-            color: '#E6EDF5',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-            fontSize: 12.5,
-            lineHeight: 1.5,
+            padding: '8px 12px',
+            color: 'var(--rt-lcd-text)',
+            fontFamily: 'var(--rt-font-lcd)',
+            fontSize: 17,
+            lineHeight: 1.2,
+            textShadow: '0 0 5px rgba(143, 245, 90, 0.45)',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
           }}

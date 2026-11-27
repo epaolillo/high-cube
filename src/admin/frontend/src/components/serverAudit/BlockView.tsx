@@ -64,12 +64,12 @@ function BarsView({ block }: { block: BarsBlock }) {
           <Typography.Text ellipsis={{ tooltip: item.label }} style={{ fontSize: 12 }}>
             {t(`audit.label.${item.label}`, { defaultValue: item.label })}
           </Typography.Text>
-          <div style={{ background: '#F6F9FC', borderRadius: 4, height: 12, overflow: 'hidden' }}>
+          <div style={{ background: '#F3E3CC', borderRadius: 4, height: 12, overflow: 'hidden' }}>
             <div
               style={{
                 width: `${Math.max(1, (item.value / max) * 100)}%`,
                 height: '100%',
-                background: '#635BFF',
+                background: '#E2621F',
                 borderRadius: 4,
               }}
             />

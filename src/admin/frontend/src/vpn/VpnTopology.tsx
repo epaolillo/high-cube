@@ -1,33 +1,33 @@
-import { CloudServerOutlined, LaptopOutlined } from '@ant-design/icons';
+import { HddOutlined, LaptopOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { formatRate, type VpnLink, type VpnNode } from './types';
 
-const WIDTH = 860;
-const HEIGHT = 440;
-const NODE_RADIUS = 26;
-const HUB_RADIUS = 34;
+const WIDTH = 960;
+const HEIGHT = 470;
+const NODE_RADIUS = 22;
+const HUB_RADIUS = 30;
 
 type Point = { x: number; y: number };
 
-function nodeColor(node: VpnNode) {
-  if (node.status !== 'active') return '#B76E00';
-  return node.connected ? '#09825D' : '#DF1B41';
+function nodeState(node: VpnNode) {
+  if (node.status !== 'active') return 'pending';
+  return node.connected ? 'up' : 'down';
 }
 
 // Thicker lines for busier links, on a log scale so 1 KB/s and 100 MB/s both read well.
 function strokeWidth(rate: number) {
   if (rate <= 0) return 2;
-  return Math.min(9, 2 + Math.log10(1 + rate / 1024) * 1.6);
+  return Math.min(7, 2 + Math.log10(1 + rate / 1024) * 1.4);
 }
 
 function layout(nodes: VpnNode[], hubId: number | null): Map<number, Point> {
   const positions = new Map<number, Point>();
-  const center = { x: WIDTH / 2, y: HEIGHT / 2 };
+  const center = { x: WIDTH / 2, y: 240 };
   const hub = nodes.find((node) => node.id === hubId);
   const members = nodes.filter((node) => node.id !== hubId);
   if (hub) positions.set(hub.id, center);
-  const radiusX = hub ? WIDTH / 2 - 110 : WIDTH / 2 - 120;
-  const radiusY = HEIGHT / 2 - 70;
+  const radiusX = WIDTH / 2 - 140;
+  const radiusY = 160;
   members.forEach((node, index) => {
     if (!hub && members.length === 1) {
       positions.set(node.id, center);
@@ -60,6 +60,23 @@ export function VpnTopology({
 
   return (
     <svg className="hc-vpn-map" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label={t('vpnMap')}>
+      <defs>
+        <filter id="hc-vpn-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        {/* User-space region: vertical or horizontal links have a zero-size bounding box. */}
+        <filter id="hc-vpn-glow-link" filterUnits="userSpaceOnUse" x={0} y={0} width={WIDTH} height={HEIGHT}>
+          <feGaussianBlur stdDeviation="3" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       {links.map((link) => {
         const from = positions.get(link.source);
         const to = positions.get(link.target);
@@ -69,6 +86,9 @@ export function VpnTopology({
         const total = memberToHub + hubToMember;
         const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
         const member = nodes.find((node) => node.id === link.target);
+        const rateLabel = `↑${formatRate(memberToHub)} ↓${formatRate(hubToMember)}`;
+        // VT323 glyphs are about 0.45em wide.
+        const pillWidth = rateLabel.length * 8 + 18;
         return (
           <g key={`${link.source}-${link.target}`}>
             <line
@@ -80,6 +100,7 @@ export function VpnTopology({
               data-state={link.connected ? 'up' : 'down'}
               data-busy={link.connected && total > 1024}
               strokeWidth={strokeWidth(total)}
+              filter="url(#hc-vpn-glow-link)"
             >
               <title>
                 {`${member?.name ?? ''}: ${link.connected ? t('vpnLinkUp') : t('vpnLinkDown')}` +
@@ -88,9 +109,9 @@ export function VpnTopology({
             </line>
             {link.connected && (
               <g transform={`translate(${mid.x}, ${mid.y})`}>
-                <rect x={-58} y={-11} width={116} height={22} rx={11} className="hc-vpn-map__rate-bg" />
-                <text className="hc-vpn-map__rate" textAnchor="middle" dy={4}>
-                  {`↑${formatRate(memberToHub)} ↓${formatRate(hubToMember)}`}
+                <rect x={-pillWidth / 2} y={-11} width={pillWidth} height={22} rx={11} className="hc-vpn-map__rate-bg" />
+                <text className="hc-vpn-map__rate" textAnchor="middle" dy={5}>
+                  {rateLabel}
                 </text>
               </g>
             )}
@@ -101,31 +122,39 @@ export function VpnTopology({
         const point = positions.get(node.id);
         if (!point) return null;
         const radius = node.isHub ? HUB_RADIUS : NODE_RADIUS;
-        const color = nodeColor(node);
-        const Icon = node.kind === 'server' ? CloudServerOutlined : LaptopOutlined;
+        const Icon = node.kind === 'server' ? HddOutlined : LaptopOutlined;
         return (
-          <g key={node.id} transform={`translate(${point.x}, ${point.y})`}>
+          <g
+            key={node.id}
+            className="hc-vpn-map__node"
+            data-state={nodeState(node)}
+            data-hub={node.isHub}
+            transform={`translate(${point.x}, ${point.y})`}
+          >
             <title>
               {`${node.name} · ${node.address}` +
                 (node.status !== 'active' ? ` · ${t('vpnStatusPending')}` : '') +
                 (node.error ? ` · ${node.error}` : '')}
             </title>
-            <circle r={radius + 6} fill={color} opacity={0.12} />
-            <circle r={radius} fill="#FFFFFF" stroke={color} strokeWidth={node.isHub ? 3 : 2} />
+            {node.isHub && <circle r={radius + 7} className="hc-vpn-map__halo" />}
+            <circle r={radius} className="hc-vpn-map__disc" filter="url(#hc-vpn-glow)" />
             <foreignObject x={-radius} y={-radius} width={radius * 2} height={radius * 2}>
-              <div className="hc-vpn-map__icon" style={{ color, fontSize: node.isHub ? 26 : 20 }}>
+              <div className="hc-vpn-map__icon" style={{ fontSize: node.isHub ? 26 : 19 }}>
                 <Icon />
               </div>
             </foreignObject>
             {node.isHub && (
-              <text className="hc-vpn-map__hub" textAnchor="middle" y={-radius - 12}>
-                {t('vpnHub')}
-              </text>
+              <g transform={`translate(0, ${-radius - 18})`}>
+                <rect x={-34} y={-10} width={68} height={20} rx={4} className="hc-vpn-map__hub-bg" />
+                <text className="hc-vpn-map__hub" textAnchor="middle" dy={5}>
+                  {t('vpnHub')}
+                </text>
+              </g>
             )}
-            <text className="hc-vpn-map__name" textAnchor="middle" y={radius + 18}>
+            <text className="hc-vpn-map__name" textAnchor="middle" y={radius + 24}>
               {node.name}
             </text>
-            <text className="hc-vpn-map__address" textAnchor="middle" y={radius + 33}>
+            <text className="hc-vpn-map__address" textAnchor="middle" y={radius + 43}>
               {node.address}
             </text>
           </g>

@@ -46,7 +46,7 @@ type Props = {
 
 export function ServerPills({ servers, collapse = true }: Props) {
   if (!servers || servers.length === 0) {
-    return <span style={{ color: '#8898AA' }}>—</span>;
+    return <span style={{ color: 'var(--rt-ink-faint)' }}>—</span>;
   }
 
   if (!collapse) {

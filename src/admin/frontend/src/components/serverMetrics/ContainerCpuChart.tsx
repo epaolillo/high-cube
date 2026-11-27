@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api/client';
 import { ContainerProcessesModal } from './ContainerProcessesModal';
+import { RETRO_PALETTE, retroAxisStyle, retroCard, retroChartTheme, retroScreen } from '../../retro/styles';
 
 type RangeId = '15m' | '1h' | '6h' | '24h' | '7d';
 
@@ -29,25 +30,8 @@ type Props = {
   rangeMinutes: number;
 };
 
-const cardStyle = {
-  background: '#fff',
-  border: '1px solid #E3E8EE',
-  borderRadius: 8,
-  padding: 24,
-};
-
-const COLORS = [
-  '#635BFF',
-  '#09825D',
-  '#F5A623',
-  '#0A2540',
-  '#D97706',
-  '#7C3AED',
-  '#0891B2',
-  '#DC2626',
-  '#4B5563',
-  '#059669',
-];
+const cardStyle = retroCard;
+const COLORS = RETRO_PALETTE;
 
 function isoUtc(value: dayjs.Dayjs) {
   return value.toDate().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -186,7 +170,7 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
                     background: 'none',
                     cursor: 'pointer',
                     fontSize: 12,
-                    color: hidden ? '#AEBECD' : '#425466',
+                    color: hidden ? 'var(--rt-ink-faint)' : 'var(--rt-ink)',
                   }}
                 >
                   <span
@@ -194,7 +178,8 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
                       width: 8,
                       height: 8,
                       borderRadius: 2,
-                      background: hidden ? '#DCE3EC' : item.color,
+                      background: hidden ? '#CDB69A' : item.color,
+                      boxShadow: hidden ? 'none' : `0 0 4px ${item.color}`,
                     }}
                   />
                   {item.label}
@@ -202,7 +187,9 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
               );
             })}
           </div>
+          <div style={{ ...retroScreen, marginTop: 8, padding: '6px 8px' }}>
           <Column
+            theme={retroChartTheme}
             height={260}
             autoFit
             data={visibleData}
@@ -221,11 +208,13 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
             }}
             axis={{
               x: {
+                ...retroAxisStyle,
                 tickCount: 6,
                 labelAutoHide: true,
                 labelFormatter: (value: number) => formatTick(Number(value), range),
               },
               y: {
+                ...retroAxisStyle,
                 title: '%',
                 labelFormatter: (value: number) => `${Number(Number(value).toFixed(2))}%`,
               },
@@ -251,6 +240,7 @@ export function ContainerCpuChart({ serverId, range, rangeMinutes }: Props) {
               });
             }}
           />
+          </div>
         </>
       )}
       {modal ? (

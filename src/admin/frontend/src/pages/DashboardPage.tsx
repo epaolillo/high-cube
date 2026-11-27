@@ -1,4 +1,4 @@
-import { DownOutlined } from '@ant-design/icons';
+import { CloseOutlined, DownOutlined } from '@ant-design/icons';
 import { Drawer, Dropdown } from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,7 +16,7 @@ import ProfilePage from './ProfilePage';
 import ServerDetailPage from './ServerDetailPage';
 import UserDetailPage from './UserDetailPage';
 import VpnPage from '../vpn/VpnPage';
-import '../retro/retro.css';
+import { PANEL_LABEL } from '../retro/styles';
 import '../dashboard/dashboard.css';
 import '../vpn/vpn.css';
 
@@ -87,7 +87,6 @@ export default function DashboardPage() {
           </div>
           <span className="hc-dash__stripes rt-stripes" aria-hidden="true" />
           <span className="hc-dash__vent" aria-hidden="true" />
-          <img className="hc-dash__cassette" src="/retro/illustrations/cassette.png" alt="" />
           <div className="hc-dash__spacer" />
           <span className="hc-dash__lamps rt-lcd" aria-hidden="true">
             <span className="rt-lamp" data-color="orange" />
@@ -134,18 +133,22 @@ export default function DashboardPage() {
 
         <Drawer
           className="hc-drawer"
+          rootClassName="hc-skin"
           width="min(1200px, 94vw)"
           open={!!drawer}
           onClose={closeDrawer}
           destroyOnClose
-          title={null}
+          title={drawer?.kind === 'vpn' ? null : <span className="hc-drawer__band" aria-hidden="true" />}
+          extra={drawer?.kind === 'vpn' ? null : <span className="hc-drawer__plate rt-raised">{PANEL_LABEL}</span>}
+          closable={drawer?.kind !== 'vpn'}
+          closeIcon={<CloseOutlined />}
         >
           {drawer?.kind === 'app' && <ApplicationDetailPage id={drawer.id} />}
           {drawer?.kind === 'server' && <ServerDetailPage id={drawer.id} />}
           {drawer?.kind === 'user' && <UserDetailPage id={drawer.id} onSaved={closeDrawer} />}
           {drawer?.kind === 'profile' && <ProfilePage />}
           {drawer?.kind === 'integrations' && <IntegrationsPage />}
-          {drawer?.kind === 'vpn' && <VpnPage />}
+          {drawer?.kind === 'vpn' && <VpnPage onClose={closeDrawer} />}
         </Drawer>
       </div>
       </ServerFilterProvider>

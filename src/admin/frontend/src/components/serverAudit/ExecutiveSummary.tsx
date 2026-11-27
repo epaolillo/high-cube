@@ -28,7 +28,7 @@ export function ExecutiveSummary({
   const pendingActions = summary.actions.filter((action) => !applied.has(actionKey(action)));
 
   return (
-    <div style={{ border: '1px solid #E3E8EE', borderRadius: 8, padding: 20, background: '#fff' }}>
+    <div style={{ border: '1px solid #C9AC88', borderRadius: 8, padding: 20, background: 'var(--rt-plate)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <Space size={20} align="center">
           <Progress
