@@ -85,6 +85,14 @@
   width: 37px;
   height: 18px;
 }
+.hc-vpn__actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.hc-vpn__actions > .rt-btn,
 .hc-vpn__delete {
   flex-shrink: 0;
   height: 40px;

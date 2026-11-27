@@ -7,6 +7,7 @@ import { confirmDestructive } from '../components/confirmDestructive';
 import dayjs from 'dayjs';
 import { RetroLineChart } from '../retro/RetroLineChart';
 import { RetroStatScreen } from '../retro/RetroStatScreen';
+import { DeviceEnrollModal } from './DeviceEnrollModal';
 import { VpnTopology } from './VpnTopology';
 import { formatBytes, formatRate, publicIpOf, type VpnNode, type VpnState } from './types';
 import './vpn.css';
@@ -75,6 +76,7 @@ export default function VpnPage({ onClose }: { onClose?: () => void }) {
   const [state, setState] = useState<VpnState>();
   const [history, setHistory] = useState<TrafficSample[]>([]);
   const [creating, setCreating] = useState(false);
+  const [enrollOpen, setEnrollOpen] = useState(false);
 
   const load = useCallback(async (silent: boolean) => {
     const { data } = await api.get<VpnState>('/vpn', { suppressErrorToast: silent });
@@ -170,11 +172,19 @@ export default function VpnPage({ onClose }: { onClose?: () => void }) {
           </div>
         </div>
         {network && (
-          <button type="button" className="hc-vpn__delete rt-btn rt-btn--danger" onClick={deleteNetwork}>
-            {t('vpnDelete')}
-          </button>
+          <div className="hc-vpn__actions">
+            <Tooltip title={t('vpnProfileHint')}>
+              <button type="button" className="rt-btn rt-btn--orange" onClick={() => setEnrollOpen(true)}>
+                <LaptopOutlined /> {t('vpnAddThisPc')}
+              </button>
+            </Tooltip>
+            <button type="button" className="hc-vpn__delete rt-btn rt-btn--danger" onClick={deleteNetwork}>
+              {t('vpnDelete')}
+            </button>
+          </div>
         )}
       </header>
+      <DeviceEnrollModal open={enrollOpen} onClose={() => setEnrollOpen(false)} />
 
       {!network ? (
         <div className="hc-vpn__empty rt-crt">

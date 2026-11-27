@@ -1,16 +1,13 @@
 import { Button, Form, Input, Select, Typography, message } from 'antd';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../auth/AuthContext';
 import api from '../api/client';
 import i18n from '../i18n';
 import { retroCard } from '../retro/styles';
-import { DeviceEnrollModal } from '../vpn/DeviceEnrollModal';
 
 export default function ProfilePage() {
   const { t } = useTranslation();
-  const { profile, refreshProfile, isAdmin } = useAuth();
-  const [enrollOpen, setEnrollOpen] = useState(false);
+  const { profile, refreshProfile } = useAuth();
 
   if (!profile) return null;
 
@@ -45,16 +42,6 @@ export default function ProfilePage() {
           </Button>
         </Form>
       </div>
-      {isAdmin && (
-        <div style={{ ...retroCard, marginTop: 14 }}>
-          <Typography.Title level={5} style={{ color: 'var(--rt-ink)', marginTop: 0 }}>
-            {t('vpn')}
-          </Typography.Title>
-          <Typography.Paragraph type="secondary">{t('vpnProfileHint')}</Typography.Paragraph>
-          <Button onClick={() => setEnrollOpen(true)}>{t('vpnAddThisPc')}</Button>
-          <DeviceEnrollModal open={enrollOpen} onClose={() => setEnrollOpen(false)} />
-        </div>
-      )}
     </div>
   );
 }
