@@ -674,6 +674,9 @@ const resources = {
       hostnameChanging: 'Changing the server hostname to "{{hostname}}"…',
       hostnameChanged: 'Server hostname changed to "{{hostname}}".',
       hostnameChangeFailed: 'Could not change the server hostname: {{error}}',
+      hostnameHelperTitle: 'Update the High Cube helper on this server',
+      hostnameHelperBody:
+        'The helper hc-agent uses to rename the host is missing or outdated. Open a terminal on that server (SSH), paste this command, enter your sudo password, then save the server name again.',
     },
   },
   es: {
@@ -1351,6 +1354,9 @@ const resources = {
       hostnameChanging: 'Cambiando el hostname del servidor a "{{hostname}}"…',
       hostnameChanged: 'Hostname del servidor cambiado a "{{hostname}}".',
       hostnameChangeFailed: 'No se pudo cambiar el hostname del servidor: {{error}}',
+      hostnameHelperTitle: 'Actualizá el helper de High Cube en este servidor',
+      hostnameHelperBody:
+        'Falta o está desactualizado el helper que usa hc-agent para renombrar el host. Abrí una terminal en ese servidor (SSH), pegá este comando, ingresá tu contraseña de sudo y volvé a guardar el nombre del servidor.',
     },
   },
 };

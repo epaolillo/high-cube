@@ -1,6 +1,30 @@
-import { message } from 'antd';
+import { Modal, Typography, message } from 'antd';
 import type { TFunction } from 'i18next';
+import { createElement } from 'react';
 import api from '../api/client';
+import { setupCommand } from '../vpn/ServerVpnModal';
+
+// Errors that only go away by reinstalling the root helper on the server.
+const HELPER_ERRORS = ['hc-vpn-helper', 'invalid interface name', 'unknown action'];
+
+function showHelperSetup(t: TFunction, error: string) {
+  const command = setupCommand();
+  Modal.warning({
+    title: t('hostnameHelperTitle'),
+    width: 640,
+    content: createElement(
+      'div',
+      null,
+      createElement(Typography.Paragraph, null, t('hostnameHelperBody')),
+      createElement(
+        'div',
+        { className: 'hc-vpn-command' },
+        createElement(Typography.Text, { copyable: { text: command }, style: { color: 'inherit' } }, command),
+      ),
+      createElement(Typography.Paragraph, { type: 'secondary', style: { marginTop: 12, marginBottom: 0 } }, error),
+    ),
+  });
+}
 
 export type HostnameChange = {
   status: 'sent' | 'offline' | 'invalid';
@@ -50,6 +74,11 @@ export function followHostnameChange(t: TFunction, serverId: number | string, ch
       });
       if (data.status === 'ok') {
         message.success({ key, content: t('hostnameChanged', { hostname: data.hostname }) });
+        return;
+      }
+      if (data.status === 'error' && HELPER_ERRORS.some((needle) => data.error.includes(needle))) {
+        message.destroy(key);
+        showHelperSetup(t, data.error);
         return;
       }
       if (data.status === 'error' || data.status === 'timeout') {

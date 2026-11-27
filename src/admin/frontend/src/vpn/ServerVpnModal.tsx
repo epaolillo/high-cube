@@ -11,7 +11,7 @@ type JoinValues = { listenPort?: number; endpoint?: string; hub?: boolean };
 const SETUP_REQUIRED = 'setup-required';
 
 // Run once on the server: installs the root helper hc-agent drives WireGuard through.
-function setupCommand() {
+export function setupCommand() {
   return `curl -fsSL '${window.location.origin}/api/vpn/agent-setup' | sudo bash`;
 }
 
