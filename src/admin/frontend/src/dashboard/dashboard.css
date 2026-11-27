@@ -1010,7 +1010,9 @@
   right: 18px;
   width: clamp(130px, 20%, 210px);
   transform: translateY(-50%) rotate(-3deg);
-  filter: drop-shadow(0 6px 6px rgba(40, 20, 6, 0.4));
+  /* Decorative only: blurred so it reads as a backdrop, not a subject. */
+  filter: blur(9px) saturate(0.7);
+  opacity: 0.55;
   pointer-events: none;
   user-select: none;
 }

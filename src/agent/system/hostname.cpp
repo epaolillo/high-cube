@@ -51,7 +51,10 @@ HostnameChange setHostname(const std::string& hostname) {
   if (result.code == 0 && out.rfind("ok", 0) == 0) {
     return {true, {}};
   }
-  if (out.find("unknown action") != std::string::npos) {
+  // Helpers older than the hostname action read the name as an interface: names up to 15
+  // characters reach "unknown action", longer ones fail the interface name check first.
+  if (out.find("unknown action") != std::string::npos ||
+      out.find("invalid interface name") != std::string::npos) {
     return {false, "hc-vpn-helper on this server is outdated. Run the server setup command again "
                    "(VPN modal) and retry."};
   }
